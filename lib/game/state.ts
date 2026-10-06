@@ -13,6 +13,7 @@ import {
   PLAYER_SPAWN,
   type RideMode,
 } from "./gameConstants";
+import { START_TIME } from "./map/time";
 
 export interface KeyState {
   forward: boolean;
@@ -58,6 +59,10 @@ export interface GameWorld {
   bikeVel: THREE.Vector3;
   /** Handbrake slide active (for skid marks + HUD). */
   bikeDrift: boolean;
+  /** Engine running. Persists across dismounts (X toggles). */
+  engineOn: boolean;
+  /** Bike lights on/off (L toggles). */
+  lightsOn: boolean;
   wheelSpin: number;
 
   // Shared third-person camera orbit state
@@ -69,6 +74,9 @@ export interface GameWorld {
 
   // Interaction
   nearBike: boolean;
+
+  /** Time of day in game hours (0-24). 1 real minute = 1 game hour. */
+  time: number;
 }
 
 export function createInitialWorld(): GameWorld {
@@ -91,6 +99,8 @@ export function createInitialWorld(): GameWorld {
     bikeSteer: 0,
     bikeVel: new THREE.Vector3(),
     bikeDrift: false,
+    engineOn: true,
+    lightsOn: true,
     wheelSpin: 0,
 
     camYaw: Math.PI,
@@ -99,6 +109,7 @@ export function createInitialWorld(): GameWorld {
     camManualZoom: false,
 
     nearBike: false,
+    time: START_TIME,
   };
 }
 

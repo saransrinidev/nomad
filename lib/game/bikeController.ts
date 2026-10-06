@@ -15,6 +15,8 @@ import {
   BIKE_TURN_RATE,
 } from "./gameConstants";
 import { collideWorld } from "./playerController";
+import { groundHeight, WORLD_HALF } from "./map/terrain";
+import { waterAt } from "./map/water";
 import type { GameWorld } from "./state";
 
 function damp(current: number, target: number, rate: number, dt: number) {
@@ -41,16 +43,22 @@ export function updateBike(world: GameWorld, dt: number) {
   const throttle = keys.forward;
   const reverse = keys.back;
 
-  if (throttle) {
+  if (throttle && world.engineOn) {
     // Torque taper: full punch off the line, fading toward top speed.
+    // Dead throttle with the engine off falls through to drag below.
     const frac = clamp(world.bikeSpeed / BIKE_MAX_SPEED, 0, 1);
     world.bikeSpeed += BIKE_LAUNCH_ACCEL * (1 - BIKE_TAPER * frac * frac) * step;
   } else if (reverse) {
     if (world.bikeSpeed > 0.5) {
-      // S while moving forward = brake
+      // S while moving forward = brake (mechanical, works engine-off)
       world.bikeSpeed -= BIKE_BRAKE * 0.7 * step;
-    } else {
+    } else if (world.engineOn) {
       world.bikeSpeed -= BIKE_REVERSE_ACCEL * step;
+    } else {
+      // Engine off: settle to a standstill instead of creeping.
+      const d = BIKE_DRAG * step;
+      if (Math.abs(world.bikeSpeed) <= d) world.bikeSpeed = 0;
+      else world.bikeSpeed -= Math.sign(world.bikeSpeed) * d;
     }
   } else {
     // Coast down: base drag plus speed-proportional engine braking.
@@ -68,6 +76,19 @@ export function updateBike(world: GameWorld, dt: number) {
   }
 
   world.bikeSpeed = clamp(world.bikeSpeed, BIKE_MAX_REVERSE, BIKE_MAX_SPEED);
+
+  // Wading through shallow water soaks speed (capped crawl + extra drag).
+  const wq = waterAt(world.bikePos.x, world.bikePos.z);
+  if (wq.inWater) {
+    const cap = 14;
+    if (Math.abs(world.bikeSpeed) > cap) {
+      const sgn = Math.sign(world.bikeSpeed);
+      world.bikeSpeed = Math.max(cap, Math.abs(world.bikeSpeed) - 25 * step) * sgn;
+    }
+    const soak = 1 - Math.min(0.85, (0.4 + wq.depth) * step * 2);
+    world.bikeSpeed *= soak;
+    world.bikeVel.multiplyScalar(soak);
+  }
 
   // Steering with smoothing; full authority at low speed, damped at
   // high speed so 150 km/h stays stable but still turnable.
@@ -101,7 +122,15 @@ export function updateBike(world: GameWorld, dt: number) {
   world.bikeVel.z += (fz * world.bikeSpeed - world.bikeVel.z) * k;
   world.bikePos.x += world.bikeVel.x * step;
   world.bikePos.z += world.bikeVel.z * step;
-  world.bikePos.y = 0;
+  // Shoreline: the island ends at the map edge, ocean beyond.
+  const B = WORLD_HALF;
+  if (world.bikePos.x < -B || world.bikePos.x > B || world.bikePos.z < -B || world.bikePos.z > B) {
+    world.bikePos.x = Math.min(B, Math.max(-B, world.bikePos.x));
+    world.bikePos.z = Math.min(B, Math.max(-B, world.bikePos.z));
+    world.bikeSpeed *= 0.4;
+    world.bikeVel.multiplyScalar(0.4);
+  }
+  world.bikePos.y = groundHeight(world.bikePos.x, world.bikePos.z);
 
   const fixed = collideWorld(world.bikePos.x, world.bikePos.z, 1.1);
   if (fixed.x !== world.bikePos.x || fixed.z !== world.bikePos.z) {

@@ -8,11 +8,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { groundHeight } from "@/lib/game/map/terrain";
 import type { GameWorld } from "@/lib/game/state";
 
 const SEGMENTS = 256; // per wheel
 const LIFE = 9; // seconds a mark stays visible
-const GROUND_Y = 0.03;
+const LIFT = 0.04; // hover above terrain to avoid z-fighting
 const TIRE_WIDTH = 0.16;
 const STEP_DIST = 0.35; // min travel between segments
 const REAR_Z = -0.95;
@@ -23,8 +24,10 @@ class Strip {
   head = 0;
   count = 0;
   tailLX = 0;
+  tailLY = 0;
   tailLZ = 0;
   tailRX = 0;
+  tailRY = 0;
   tailRZ = 0;
   hasTail = false;
 
@@ -40,11 +43,13 @@ class Strip {
     return (this.base + slot * 4 + v) * 3;
   }
 
-  push(lx: number, lz: number, rx: number, rz: number, now: number) {
+  push(lx: number, ly: number, lz: number, rx: number, ry: number, rz: number, now: number) {
     if (!this.hasTail) {
       this.tailLX = lx;
+      this.tailLY = ly;
       this.tailLZ = lz;
       this.tailRX = rx;
+      this.tailRY = ry;
       this.tailRZ = rz;
       this.hasTail = true;
       return;
@@ -60,25 +65,27 @@ class Strip {
     if (this.count < this.cap) this.count++;
     let o = this.slotVertex(slot, 0);
     this.pos[o] = this.tailLX;
-    this.pos[o + 1] = GROUND_Y;
+    this.pos[o + 1] = this.tailLY;
     this.pos[o + 2] = this.tailLZ;
     o = this.slotVertex(slot, 1);
     this.pos[o] = this.tailRX;
-    this.pos[o + 1] = GROUND_Y;
+    this.pos[o + 1] = this.tailRY;
     this.pos[o + 2] = this.tailRZ;
     o = this.slotVertex(slot, 2);
     this.pos[o] = lx;
-    this.pos[o + 1] = GROUND_Y;
+    this.pos[o + 1] = ly;
     this.pos[o + 2] = lz;
     o = this.slotVertex(slot, 3);
     this.pos[o] = rx;
-    this.pos[o + 1] = GROUND_Y;
+    this.pos[o + 1] = ry;
     this.pos[o + 2] = rz;
     this.birth[this.base / 4 + slot] = now;
 
     this.tailLX = lx;
+    this.tailLY = ly;
     this.tailLZ = lz;
     this.tailRX = rx;
+    this.tailRY = ry;
     this.tailRZ = rz;
   }
 
@@ -197,7 +204,19 @@ export default function SkidMarks({ worldRef }: { worldRef: React.RefObject<Game
       for (const [strip, lz] of wheels) {
         const cx = world.bikePos.x + lz * sy;
         const cz = world.bikePos.z + lz * cy;
-        strip.push(cx - rx * hw, cz - rz * hw, cx + rx * hw, cz + rz * hw, now);
+        const lx = cx - rx * hw;
+        const lz2 = cz - rz * hw;
+        const px = cx + rx * hw;
+        const pz = cz + rz * hw;
+        strip.push(
+          lx,
+          groundHeight(lx, lz2) + LIFT,
+          lz2,
+          px,
+          groundHeight(px, pz) + LIFT,
+          pz,
+          now,
+        );
       }
     } else {
       store.strips[0].break();

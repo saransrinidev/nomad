@@ -13,14 +13,20 @@ import Player from "./Player";
 import Motorcycle from "./Motorcycle";
 import Library from "./Library";
 import Village from "./Village";
+import Water from "./Water";
+import Birds from "./Birds";
 import ThirdPersonCamera from "./ThirdPersonCamera";
 import GameHUD from "./GameHUD";
 import BikePrompt from "./BikePrompt";
 import Speedometer from "./Speedometer";
 import Minimap from "./Minimap";
+import BigMap from "./BigMap";
 import PauseMenu from "./PauseMenu";
 import SkidMarks from "./SkidMarks";
 import GeoReadout from "./GeoReadout";
+import Sky from "./Sky";
+import Terrain from "./Terrain";
+import { CanvasErrorBoundary, WebGLHelpScreen } from "./WebGLSupport";
 import { useKeyboardInput } from "@/lib/game/input";
 import { ensureAudio, setAudioMuted } from "@/lib/game/audio";
 import {
@@ -34,6 +40,7 @@ import {
   type RideMode,
 } from "@/lib/game/gameConstants";
 import { createInitialWorld, type GameWorld } from "@/lib/game/state";
+import { formatTime, nightFactor } from "@/lib/game/map/time";
 
 /**
  * Runs inside the Canvas: proximity checks + low-frequency HUD sync.
@@ -43,12 +50,15 @@ function GameRig({
   worldRef,
   onNearBike,
   onSpeed,
+  onTime,
 }: {
   worldRef: RefObject<GameWorld>;
   onNearBike: (near: boolean) => void;
   onSpeed: (kmh: number) => void;
+  onTime: (label: string, night: boolean) => void;
 }) {
   const lastKmh = useRef(-1);
+  const lastClock = useRef("");
   const acc = useRef(0);
 
   useFrame((_, rawDt) => {
@@ -69,7 +79,7 @@ function GameRig({
       onNearBike(false);
     }
 
-    // Throttle speed HUD updates to ~8 Hz.
+    // Throttle speed + clock HUD updates to ~8 Hz.
     acc.current += dt;
     if (acc.current > 0.12) {
       acc.current = 0;
@@ -79,6 +89,11 @@ function GameRig({
       if (kmh !== lastKmh.current) {
         lastKmh.current = kmh;
         onSpeed(kmh);
+      }
+      const label = formatTime(world.time);
+      if (label !== lastClock.current) {
+        lastClock.current = label;
+        onTime(label, nightFactor(world.time) > 0.5);
       }
     }
   });
@@ -95,6 +110,19 @@ export default function Game() {
   const [mutedUi, setMutedUi] = useState(false);
   const [pausedUi, setPausedUi] = useState(false);
   const [mapNorthUp, setMapNorthUp] = useState(true);
+  const [mapOpen, setMapOpen] = useState(false);
+  const mapOpenRef = useRef(false);
+  // Renderer quality: a WebGL creation failure steps full → minimal (most
+  // compatible context flags) → help screen, instead of crashing the page.
+  const [glMode, setGlMode] = useState<"full" | "minimal" | "failed">("full");
+
+  const handleCanvasError = useCallback(() => {
+    setGlMode((m) => (m === "full" ? "minimal" : "failed"));
+  }, []);
+  const [engineUi, setEngineUi] = useState(true);
+  const [lightsUi, setLightsUi] = useState(true);
+  const [clockLabel, setClockLabel] = useState("08:00");
+  const [isNight, setIsNight] = useState(false);
 
   // Mirrors for the key handler (avoids stale closures).
   const modeRef = useRef<RideMode>("walk");
@@ -124,6 +152,11 @@ export default function Game() {
     setCamLocked(locked);
   }, []);
 
+  const handleTime = useCallback((label: string, night: boolean) => {
+    setClockLabel(label);
+    setIsNight(night);
+  }, []);
+
   const setPaused = useCallback((p: boolean) => {
     pausedRef.current = p;
     worldRef.current.paused = p;
@@ -135,6 +168,28 @@ export default function Game() {
     mutedRef.current = m;
     setAudioMuted(m);
     setMutedUi(m);
+  }, []);
+
+  // Fullscreen map: freeze the sim and swallow all keys while open.
+  const openMap = useCallback(() => {
+    const w = worldRef.current;
+    w.keys.forward = false;
+    w.keys.back = false;
+    w.keys.left = false;
+    w.keys.right = false;
+    w.keys.run = false;
+    w.keys.brake = false;
+    w.paused = true;
+    pausedRef.current = true;
+    mapOpenRef.current = true;
+    setMapOpen(true);
+  }, []);
+
+  const closeMap = useCallback(() => {
+    mapOpenRef.current = false;
+    setMapOpen(false);
+    pausedRef.current = false;
+    worldRef.current.paused = false;
   }, []);
 
   const handleRespawn = useCallback(() => {
@@ -149,6 +204,8 @@ export default function Game() {
     w.bikeSteer = 0;
     w.bikeVel.set(0, 0, 0);
     w.bikeDrift = false;
+    w.engineOn = true;
+    setEngineUi(true);
     modeRef.current = "walk";
     w.mode = "walk";
     setMode("walk");
@@ -159,7 +216,7 @@ export default function Game() {
     setPausedUi(false);
   }, []);
 
-  // E = mount / dismount, M = mute, ESC / P = pause menu.
+  // E = mount / dismount, X = engine, L = lights, M = mute, ESC/P = pause.
   // (ESC while pointer-locked is consumed by the browser to exit the lock,
   // so P also toggles the menu.)
   useEffect(() => {
@@ -168,14 +225,34 @@ export default function Game() {
         toggleMute();
         return;
       }
+      if (e.code === "KeyL" && !e.repeat) {
+        const w = worldRef.current;
+        w.lightsOn = !w.lightsOn;
+        setLightsUi(w.lightsOn);
+        return;
+      }
       if ((e.code === "Escape" || e.code === "KeyP") && !e.repeat) {
+        if (mapOpenRef.current) {
+          closeMap();
+          return;
+        }
         if (e.code === "KeyP" && document.pointerLockElement) {
           document.exitPointerLock();
         }
         setPaused(!pausedRef.current);
         return;
       }
-      if (e.code !== "KeyE" || e.repeat || pausedRef.current) return;
+      if (e.repeat || pausedRef.current) return;
+      if (e.code === "KeyX") {
+        // Kill switch: works seated or standing next to the bike.
+        if (modeRef.current === "ride" || nearBikeRef.current) {
+          const w = worldRef.current;
+          w.engineOn = !w.engineOn;
+          setEngineUi(w.engineOn);
+        }
+        return;
+      }
+      if (e.code !== "KeyE") return;
       const world = worldRef.current;
       if (modeRef.current === "ride") {
         // Dismount: place the rider beside the bike, facing its direction.
@@ -203,43 +280,81 @@ export default function Game() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleMute, setPaused]);
+  }, [toggleMute, setPaused, closeMap]);
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#bfe3f2] touch-none">
-      <Canvas
-        shadows
-        dpr={[1, 1.75]}
-        camera={{ fov: 55, near: 0.1, far: 4000, position: [0, 3.5, 7.5] }}
-        gl={{ antialias: true, powerPreference: "high-performance" }}
-        style={{ width: "100%", height: "100%" }}
-      >
+      {glMode === "failed" ? (
+        <WebGLHelpScreen onRetry={() => setGlMode("full")} />
+      ) : (
+        <CanvasErrorBoundary key={glMode} onError={handleCanvasError}>
+          <Canvas
+            shadows={glMode === "full"}
+            dpr={glMode === "full" ? [1, 1.5] : 1}
+            camera={{ fov: 55, near: 0.1, far: 4000, position: [0, 3.5, 7.5] }}
+            gl={{
+              // Minimal EGL requirements: no MSAA, no stencil/alpha buffers,
+              // default adapter choice (a forced discrete GPU is a common
+              // cause of EGL_NO_CONFIG on broken drivers), software fallback
+              // explicitly allowed.
+              antialias: glMode === "full",
+              stencil: false,
+              alpha: false,
+              depth: true,
+              failIfMajorPerformanceCaveat: false,
+            }}
+            style={{ width: "100%", height: "100%" }}
+          >
         <color attach="background" args={[FOG_COLOR]} />
         <fog attach="fog" args={[FOG_COLOR, FOG_NEAR, FOG_FAR]} />
         <Suspense fallback={null}>
           <World worldRef={worldRef} />
+          <Terrain />
+          <Sky worldRef={worldRef} />
           <Library />
           <Village />
+          <Water worldRef={worldRef} />
+          <Birds worldRef={worldRef} />
           <Motorcycle worldRef={worldRef} />
           <Player worldRef={worldRef} />
           <ThirdPersonCamera worldRef={worldRef} onLockChange={handleLockChange} />
-          <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} />
+          <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} engineOn={engineUi} />
           <SkidMarks worldRef={worldRef} />
           <GameRig
             worldRef={worldRef}
             onNearBike={handleNearBike}
             onSpeed={setSpeedKmh}
+            onTime={handleTime}
           />
         </Suspense>
-      </Canvas>
+          </Canvas>
+        </CanvasErrorBoundary>
+      )}
 
-      <GameHUD mode={mode} speedKmh={speedKmh} camLocked={camLocked} muted={mutedUi} />
+      <GameHUD
+        mode={mode}
+        speedKmh={speedKmh}
+        camLocked={camLocked}
+        muted={mutedUi}
+        clockLabel={clockLabel}
+        isNight={isNight}
+        engineOn={engineUi}
+        lightsOn={lightsUi}
+      />
       <Speedometer worldRef={worldRef} speedKmh={speedKmh} visible={mode === "ride"} />
       <Minimap
         worldRef={worldRef}
         northUp={mapNorthUp}
         onToggleOrientation={() => setMapNorthUp((v) => !v)}
+        onOpenMap={openMap}
       />
+      {mapOpen && (
+        <BigMap
+          worldRef={worldRef}
+          northUp={mapNorthUp}
+          onClose={closeMap}
+        />
+      )}
       <GeoReadout worldRef={worldRef} />
       {/* Center crosshair while the cursor is captured in mouse-look */}
       {camLocked && (

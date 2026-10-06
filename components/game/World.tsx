@@ -1,48 +1,15 @@
-// Infinite-feeling terrain: one large ground plane with a repeating grass
-// texture that follows the player (snapped to the tile grid so the texture
-// never swims), plus instanced trees/rocks that toroidally wrap around the
-// player. One draw call for the ground, three for all scatter.
+// Infinite-feeling scatter that toroidally wraps around the player.
+// (The ground itself is now the designed heightfield in Terrain.tsx.)
 
 "use client";
 
 import { useMemo, useRef, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Sky } from "@react-three/drei";
 import * as THREE from "three";
-import {
-  GROUND_SIZE,
-  GROUND_TILE_WORLD,
-  SCATTER_RANGE,
-  SKY_SUN_POSITION,
-} from "@/lib/game/gameConstants";
+import { SCATTER_RANGE } from "@/lib/game/gameConstants";
+import { groundHeight } from "@/lib/game/map/terrain";
+import { waterAt } from "@/lib/game/map/water";
 import { getFocusPoint, type GameWorld } from "@/lib/game/state";
-
-function makeGrassTexture(): THREE.CanvasTexture {
-  const size = 128;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#7fbf5f";
-  ctx.fillRect(0, 0, size, size);
-  // Subtle two-tone checker for a stylized mown-grass feel.
-  ctx.fillStyle = "#77b457";
-  ctx.fillRect(0, 0, size / 2, size / 2);
-  ctx.fillRect(size / 2, size / 2, size / 2, size / 2);
-  // Speckle noise.
-  for (let i = 0; i < 260; i++) {
-    ctx.fillStyle = Math.random() > 0.5 ? "#86c768" : "#6fae4f";
-    ctx.fillRect(Math.random() * size, Math.random() * size, 2, 2);
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  const tiles = GROUND_SIZE / GROUND_TILE_WORLD;
-  tex.repeat.set(tiles, tiles);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
 
 interface ScatterItem {
   x: number;
@@ -80,22 +47,12 @@ function wrapDelta(value: number, center: number, range: number) {
 }
 
 export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) {
-  const groundRef = useRef<THREE.Mesh>(null!);
   const trunkRef = useRef<THREE.InstancedMesh>(null!);
   const foliageRef = useRef<THREE.InstancedMesh>(null!);
   const rockRef = useRef<THREE.InstancedMesh>(null!);
-  const lightRef = useRef<THREE.DirectionalLight>(null!);
 
-  // Scratch objects reused every frame (never recreated, never re-rendered).
-  const scratch = useMemo(
-    () => ({ dummy: new THREE.Object3D(), target: new THREE.Object3D() }),
-    [],
-  );
-
-  const grass = useMemo(
-    () => (typeof document === "undefined" ? null : makeGrassTexture()),
-    [],
-  );
+  // Scratch object reused every frame (never recreated, never re-rendered).
+  const scratch = useMemo(() => ({ dummy: new THREE.Object3D() }), []);
 
   // Geometries with baked Y offsets so instance matrices sit at ground level.
   const trunkGeo = useMemo(() => {
@@ -116,31 +73,19 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
   useFrame(() => {
     const world = worldRef.current;
     if (world.paused) return;
-    const { dummy, target } = scratch;
+    const { dummy } = scratch;
     const focus = getFocusPoint(world);
-    // Snap the ground to whole tiles so the repeating texture stays fixed
-    // in world space while the mesh follows the player.
-    groundRef.current.position.set(
-      Math.round(focus.x / GROUND_TILE_WORLD) * GROUND_TILE_WORLD,
-      0,
-      Math.round(focus.z / GROUND_TILE_WORLD) * GROUND_TILE_WORLD,
-    );
-
-    // Keep the sun near the player so shadows stay crisp everywhere.
-    lightRef.current.position.set(focus.x + 40, 55, focus.z + 25);
-    target.position.set(focus.x, 0, focus.z);
-    target.updateMatrixWorld();
 
     // Toroidally wrap scatter around the player for endless variety.
+    // Trees/rocks sit on the designed terrain height; trees landing in
+    // water are hidden (scale 0) so shorelines stay clean.
     for (let i = 0; i < trees.length; i++) {
       const t = trees[i];
-      dummy.position.set(
-        wrapDelta(t.x, focus.x, SCATTER_RANGE),
-        0,
-        wrapDelta(t.z, focus.z, SCATTER_RANGE),
-      );
+      const wx = wrapDelta(t.x, focus.x, SCATTER_RANGE);
+      const wz = wrapDelta(t.z, focus.z, SCATTER_RANGE);
+      dummy.position.set(wx, groundHeight(wx, wz), wz);
       dummy.rotation.set(0, t.rot, 0);
-      dummy.scale.setScalar(t.scale);
+      dummy.scale.setScalar(waterAt(wx, wz).inWater ? 0 : t.scale);
       dummy.updateMatrix();
       trunkRef.current.setMatrixAt(i, dummy.matrix);
       foliageRef.current.setMatrixAt(i, dummy.matrix);
@@ -150,11 +95,9 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
 
     for (let i = 0; i < rocks.length; i++) {
       const r = rocks[i];
-      dummy.position.set(
-        wrapDelta(r.x, focus.x, SCATTER_RANGE),
-        0.3 * r.scale,
-        wrapDelta(r.z, focus.z, SCATTER_RANGE),
-      );
+      const wx = wrapDelta(r.x, focus.x, SCATTER_RANGE);
+      const wz = wrapDelta(r.z, focus.z, SCATTER_RANGE);
+      dummy.position.set(wx, groundHeight(wx, wz) + 0.3 * r.scale, wz);
       dummy.rotation.set(0, r.rot, 0);
       dummy.scale.setScalar(r.scale);
       dummy.updateMatrix();
@@ -165,39 +108,6 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
 
   return (
     <group>
-      <Sky
-        distance={450000}
-        sunPosition={SKY_SUN_POSITION}
-        turbidity={6}
-        rayleigh={1.8}
-      />
-      <hemisphereLight args={["#cfeaff", "#6a8f5a", 0.75]} />
-      <directionalLight
-        ref={lightRef}
-        castShadow
-        intensity={1.6}
-        color="#fff4e0"
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-45}
-        shadow-camera-right={45}
-        shadow-camera-top={45}
-        shadow-camera-bottom={-45}
-        shadow-camera-near={1}
-        shadow-camera-far={160}
-        shadow-bias={-0.0004}
-        target={scratch.target}
-      />
-      <primitive object={scratch.target} />
-
-      <mesh ref={groundRef} rotation-x={-Math.PI / 2} receiveShadow>
-        <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
-        {grass ? (
-          <meshStandardMaterial map={grass} roughness={1} metalness={0} />
-        ) : (
-          <meshStandardMaterial color="#7fbf5f" roughness={1} metalness={0} />
-        )}
-      </mesh>
 
       <instancedMesh
         ref={trunkRef}

@@ -11,11 +11,19 @@ export default function GameHUD({
   speedKmh,
   camLocked,
   muted,
+  clockLabel,
+  isNight,
+  engineOn,
+  lightsOn,
 }: {
   mode: RideMode;
   speedKmh: number;
   camLocked: boolean;
   muted: boolean;
+  clockLabel: string;
+  isNight: boolean;
+  engineOn: boolean;
+  lightsOn: boolean;
 }) {
   const riding = mode === "ride";
   return (
@@ -28,6 +36,16 @@ export default function GameHUD({
         <div className="text-lg leading-tight font-bold text-white">
           {riding ? `${speedKmh} km/h` : "On foot"}
         </div>
+        {!engineOn && (
+          <div className="mt-1 text-[11px] font-bold tracking-widest text-red-400">
+            ENGINE OFF &middot; X
+          </div>
+        )}
+        {(!lightsOn || !engineOn) && (
+          <div className="mt-1 text-[11px] font-bold tracking-widest text-amber-300">
+            LIGHTS OFF &middot; L
+          </div>
+        )}
       </div>
 
       {/* Bottom hint next to the minimap (full list is in the ESC menu) */}
@@ -37,9 +55,19 @@ export default function GameHUD({
         ESC <span className="text-white/50">menu</span>
       </div>
 
-      {/* Top-right muted badge */}
+      {/* Top-right clock */}
+      <div className="absolute top-4 right-4 flex items-center gap-2 rounded-full border border-white/15 bg-black/45 px-4 py-1.5 backdrop-blur-sm">
+        <span
+          className={`h-2 w-2 rounded-full ${isNight ? "bg-indigo-300" : "bg-amber-300"}`}
+        />
+        <span className="font-mono text-[13px] font-bold tracking-widest text-white tabular-nums">
+          {clockLabel}
+        </span>
+      </div>
+
+      {/* Muted badge below the clock */}
       {muted && (
-        <div className="absolute top-4 right-4 rounded-full border border-white/15 bg-black/45 px-3 py-1.5 text-[11px] font-semibold tracking-widest text-white/70 uppercase backdrop-blur-sm">
+        <div className="absolute top-16 right-4 rounded-full border border-white/15 bg-black/45 px-3 py-1.5 text-[11px] font-semibold tracking-widest text-white/70 uppercase backdrop-blur-sm">
           Muted
         </div>
       )}

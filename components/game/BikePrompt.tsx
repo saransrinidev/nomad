@@ -13,9 +13,11 @@ import type { GameWorld } from "@/lib/game/state";
 export default function BikePrompt({
   worldRef,
   visible,
+  engineOn,
 }: {
   worldRef: RefObject<GameWorld>;
   visible: boolean;
+  engineOn: boolean;
 }) {
   const anchor = useRef<THREE.Group>(null!);
 
@@ -36,6 +38,11 @@ export default function BikePrompt({
       >
         <div className="animate-bounce rounded-full border border-white/20 bg-black/60 px-5 py-2 text-sm font-semibold whitespace-nowrap text-white backdrop-blur-sm">
           Press <span className="font-mono text-amber-300">E</span> to ride
+          {!engineOn && (
+            <span className="ml-2 text-white/70">
+              &middot; <span className="font-mono text-amber-300">X</span> starts engine
+            </span>
+          )}
         </div>
       </Html>
     </group>

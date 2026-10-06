@@ -34,13 +34,16 @@ export const BIKE_ENGINE_BRAKING = 3.2; // extra drag at full speed when off thr
 export const BIKE_REVERSE_ACCEL = 10;
 export const BIKE_TURN_RATE = 2.1;
 export const BIKE_STEER_SPEED = 6;
+/** Parked lean onto the side stand (roll, radians). */
+export const BIKE_PARK_LEAN = -0.16;
 
-// --- Third-person camera ---
+// --- Third-person camera (free 360° vertical orbit; ground clamp keeps it
+// out of the terrain, lookAt stays stable just shy of exact top-down) ---
 export const CAM_DISTANCE = 6.5;
 export const CAM_RIDE_DISTANCE = 8;
 export const CAM_HEIGHT = 1.8;
-export const CAM_MIN_PITCH = 0.06;
-export const CAM_MAX_PITCH = 1.15;
+export const CAM_MIN_PITCH = -1.45;
+export const CAM_MAX_PITCH = 1.55;
 export const CAM_MIN_DISTANCE = 3.5;
 export const CAM_MAX_DISTANCE = 14;
 

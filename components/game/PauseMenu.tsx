@@ -86,6 +86,8 @@ export default function PauseMenu({
               <Row keys={["W", "A", "S", "D"]} label="Drive" />
               <Row keys={["SPACE"]} label="Brake" />
               <Row keys={["E"]} label="Exit bike" />
+              <Row keys={["X"]} label="Start / stop engine" />
+              <Row keys={["L"]} label="Headlight on / off" />
               <div className="pt-1 text-[11px] font-bold tracking-widest text-white/50">
                 CAMERA
               </div>

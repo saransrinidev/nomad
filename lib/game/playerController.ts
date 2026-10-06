@@ -12,6 +12,8 @@ import {
   WALK_SPEED,
 } from "./gameConstants";
 import { VILLAGE_COLLIDERS } from "./map/village";
+import { groundHeight, WORLD_HALF } from "./map/terrain";
+import { waterAt } from "./map/water";
 import type { GameWorld } from "./state";
 
 function damp(current: number, target: number, rate: number, dt: number) {
@@ -65,7 +67,7 @@ function collideBox(
   return { x, z };
 }
 
-/** World collision: library + all village buildings. Cheap enough per frame. */
+/** World collision: library + village buildings. Water is wadable. */
 export function collideWorld(
   x: number,
   z: number,
@@ -100,7 +102,10 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   }
 
   const running = keys.run && inZ > 0;
-  const targetSpeed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
+  let targetSpeed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
+  // Wading through shallow water drags movement down.
+  const wq = waterAt(world.playerPos.x, world.playerPos.z);
+  if (wq.inWater) targetSpeed *= Math.max(0.35, 1 - 0.55 * wq.depth);
   world.playerSpeed = damp(world.playerSpeed, targetSpeed, PLAYER_ACCEL, step);
   world.playerMoving = world.playerSpeed > 0.25;
   world.playerRunning = running && world.playerMoving;
@@ -113,12 +118,17 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   // Move along the (normalized) input direction for consistent diagonal speed.
   world.playerPos.x += dirX * world.playerSpeed * step;
   world.playerPos.z += dirZ * world.playerSpeed * step;
+  // Shoreline: the island ends at the map edge, ocean beyond.
+  const B = WORLD_HALF;
+  world.playerPos.x = Math.min(B, Math.max(-B, world.playerPos.x));
+  world.playerPos.z = Math.min(B, Math.max(-B, world.playerPos.z));
 
-  // Flat-ground gravity (kept for future ramps/jumps).
+  // Designed-terrain ground (kept for future ramps/jumps).
+  const gy = groundHeight(world.playerPos.x, world.playerPos.z);
   world.playerVelY -= GRAVITY * step;
   world.playerPos.y += world.playerVelY * step;
-  if (world.playerPos.y <= 0) {
-    world.playerPos.y = 0;
+  if (world.playerPos.y <= gy) {
+    world.playerPos.y = gy;
     world.playerVelY = 0;
   }
 

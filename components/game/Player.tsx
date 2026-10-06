@@ -13,9 +13,10 @@ import { playFootstep } from "@/lib/game/audio";
 import type { GameWorld } from "@/lib/game/state";
 
 const SKIN = "#e8b98a";
-const JACKET = "#2f6f8f";
-const PANTS = "#334155";
+const SHIRT = "#161616";
+const DENIM = "#2f4d7d";
 const SHOE = "#1f2937";
+const HAIR = "#14100d";
 
 export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> }) {
   const root = useRef<THREE.Group>(null!);
@@ -106,7 +107,7 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
       <group ref={leftLeg} position={[-0.14, 0.78, 0]}>
         <mesh position={[0, -0.32, 0]} castShadow>
           <boxGeometry args={[0.22, 0.64, 0.24]} />
-          <meshStandardMaterial color={PANTS} roughness={0.9} />
+          <meshStandardMaterial color={DENIM} roughness={0.9} />
         </mesh>
         <mesh position={[0, -0.68, 0.04]} castShadow>
           <boxGeometry args={[0.23, 0.14, 0.34]} />
@@ -116,7 +117,7 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
       <group ref={rightLeg} position={[0.14, 0.78, 0]}>
         <mesh position={[0, -0.32, 0]} castShadow>
           <boxGeometry args={[0.22, 0.64, 0.24]} />
-          <meshStandardMaterial color={PANTS} roughness={0.9} />
+          <meshStandardMaterial color={DENIM} roughness={0.9} />
         </mesh>
         <mesh position={[0, -0.68, 0.04]} castShadow>
           <boxGeometry args={[0.23, 0.14, 0.34]} />
@@ -126,7 +127,7 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
       {/* Torso */}
       <mesh position={[0, 1.12, 0]} castShadow>
         <boxGeometry args={[0.56, 0.68, 0.32]} />
-        <meshStandardMaterial color={JACKET} roughness={0.85} />
+        <meshStandardMaterial color={SHIRT} roughness={0.85} />
       </mesh>
       {/* Neck (joins torso to head) */}
       <mesh position={[0, 1.5, 0]} castShadow>
@@ -137,12 +138,12 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
       <group ref={leftArm} position={[-0.37, 1.4, 0]}>
         <mesh position={[0, -0.17, 0]} castShadow>
           <boxGeometry args={[0.17, 0.34, 0.19]} />
-          <meshStandardMaterial color={JACKET} roughness={0.85} />
+          <meshStandardMaterial color={SHIRT} roughness={0.85} />
         </mesh>
         <group ref={leftElbow} position={[0, -0.34, 0]}>
           <mesh position={[0, -0.16, 0]} castShadow>
             <boxGeometry args={[0.15, 0.32, 0.17]} />
-            <meshStandardMaterial color={JACKET} roughness={0.85} />
+            <meshStandardMaterial color={SHIRT} roughness={0.85} />
           </mesh>
           <mesh position={[0, -0.36, 0]} castShadow>
             <sphereGeometry args={[0.09, 8, 8]} />
@@ -153,12 +154,12 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
       <group ref={rightArm} position={[0.37, 1.4, 0]}>
         <mesh position={[0, -0.17, 0]} castShadow>
           <boxGeometry args={[0.17, 0.34, 0.19]} />
-          <meshStandardMaterial color={JACKET} roughness={0.85} />
+          <meshStandardMaterial color={SHIRT} roughness={0.85} />
         </mesh>
         <group ref={rightElbow} position={[0, -0.34, 0]}>
           <mesh position={[0, -0.16, 0]} castShadow>
             <boxGeometry args={[0.15, 0.32, 0.17]} />
-            <meshStandardMaterial color={JACKET} roughness={0.85} />
+            <meshStandardMaterial color={SHIRT} roughness={0.85} />
           </mesh>
           <mesh position={[0, -0.36, 0]} castShadow>
             <sphereGeometry args={[0.09, 8, 8]} />
@@ -166,19 +167,33 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
           </mesh>
         </group>
       </group>
-      {/* Head + cap */}
+      {/* Head */}
       <mesh position={[0, 1.72, 0]} castShadow>
         <boxGeometry args={[0.34, 0.36, 0.32]} />
         <meshStandardMaterial color={SKIN} roughness={0.8} />
       </mesh>
-      <mesh position={[0, 1.93, 0.02]} castShadow>
-        <boxGeometry args={[0.38, 0.1, 0.36]} />
-        <meshStandardMaterial color="#b3382e" roughness={0.85} />
+      {/* Black hair: top cover + back panel */}
+      <mesh position={[0, 1.93, -0.01]} castShadow>
+        <boxGeometry args={[0.37, 0.12, 0.35]} />
+        <meshStandardMaterial color={HAIR} roughness={0.95} />
       </mesh>
-      <mesh position={[0, 1.9, 0.28]}>
-        <boxGeometry args={[0.3, 0.05, 0.18]} />
-        <meshStandardMaterial color="#b3382e" roughness={0.85} />
+      <mesh position={[0, 1.78, -0.16]} castShadow>
+        <boxGeometry args={[0.37, 0.3, 0.07]} />
+        <meshStandardMaterial color={HAIR} roughness={0.95} />
       </mesh>
+      {/* Eyes on the +Z face */}
+      {[-0.09, 0.09].map((x) => (
+        <group key={x} position={[x, 1.74, 0]}>
+          <mesh position={[0, 0, 0.163]}>
+            <boxGeometry args={[0.09, 0.11, 0.02]} />
+            <meshStandardMaterial color="#ffffff" roughness={0.4} />
+          </mesh>
+          <mesh position={[0, 0, 0.176]}>
+            <boxGeometry args={[0.045, 0.06, 0.012]} />
+            <meshStandardMaterial color="#1a1a1a" roughness={0.4} />
+          </mesh>
+        </group>
+      ))}
       </group>
     </group>
   );
