@@ -2,7 +2,6 @@
 // Used by both the corner minimap and the fullscreen BigMap: green terrain,
 // blue water, POI markers, bike pin, blue-dot player, compass N.
 
-import { LIBRARY_POSITION } from "@/lib/game/gameConstants";
 import { VILLAGE_CENTER } from "@/lib/game/map/village";
 import {
   LAKE,
@@ -16,8 +15,6 @@ import { WORLD_HALF } from "@/lib/game/map/terrain";
 
 export const MAP_LAND = "#b3e0ae";
 export const MAP_WATER = "#aad3df";
-const POI_FILL = "#cfd4da";
-const POI_EDGE = "#9aa0a6";
 const POI_TEXT = "#5f6368";
 const GOOGLE_BLUE = "#1a73e8";
 const GOOGLE_RED = "#ea4335";
@@ -124,25 +121,6 @@ export function renderMap(
     else ctx.lineTo(mx, mz);
   });
   ctx.stroke();
-
-  // Library POI (only when in view).
-  {
-    const [lx, , lz] = LIBRARY_POSITION;
-    const [mx, mz] = toMap(lx, lz);
-    if (Math.hypot(mx - C, mz - C) <= C - 18) {
-      ctx.fillStyle = POI_FILL;
-      ctx.strokeStyle = POI_EDGE;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.roundRect(mx - 6, mz - 6, 12, 12, 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = POI_TEXT;
-      ctx.font = "600 9px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Library", mx, mz + 20);
-    }
-  }
 
   // Village marker (only when in view).
   {

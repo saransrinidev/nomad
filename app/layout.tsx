@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Nomad — Open-World Motorcycle Prototype",
-  description: "Playable 3D prototype: one player, one bike, open land, library.",
+  description: "Playable 3D prototype: one player, one bike, open land, village.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

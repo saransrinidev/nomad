@@ -11,13 +11,14 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import World from "./World";
 import Player from "./Player";
 import Motorcycle from "./Motorcycle";
-import Library from "./Library";
 import Village from "./Village";
 import Water from "./Water";
 import Birds from "./Birds";
 import ThirdPersonCamera from "./ThirdPersonCamera";
 import GameHUD from "./GameHUD";
 import BikePrompt from "./BikePrompt";
+import DoorPrompt from "./DoorPrompt";
+import Interior from "./Interior";
 import Speedometer from "./Speedometer";
 import Minimap from "./Minimap";
 import BigMap from "./BigMap";
@@ -41,6 +42,9 @@ import {
 } from "@/lib/game/gameConstants";
 import { createInitialWorld, type GameWorld } from "@/lib/game/state";
 import { formatTime, nightFactor } from "@/lib/game/map/time";
+import { nearestDoor } from "@/lib/game/playerController";
+import { BUILDING_DOORS, type BuildingType } from "@/lib/game/map/village";
+import { INTERIOR_SPAWN, INTERIOR_THEMES } from "@/lib/game/map/interior";
 
 /**
  * Runs inside the Canvas: proximity checks + low-frequency HUD sync.
@@ -49,11 +53,13 @@ import { formatTime, nightFactor } from "@/lib/game/map/time";
 function GameRig({
   worldRef,
   onNearBike,
+  onNearDoor,
   onSpeed,
   onTime,
 }: {
   worldRef: RefObject<GameWorld>;
   onNearBike: (near: boolean) => void;
+  onNearDoor: (idx: number | null) => void;
   onSpeed: (kmh: number) => void;
   onTime: (label: string, night: boolean) => void;
 }) {
@@ -66,7 +72,7 @@ function GameRig({
     const world = worldRef.current;
     if (world.paused) return;
 
-    if (world.mode === "walk") {
+    if (world.mode === "walk" && world.interior === null) {
       const dx = world.playerPos.x - world.bikePos.x;
       const dz = world.playerPos.z - world.bikePos.z;
       const near = Math.hypot(dx, dz) < INTERACT_DISTANCE;
@@ -74,9 +80,21 @@ function GameRig({
         worldRef.current.nearBike = near;
         onNearBike(near);
       }
-    } else if (worldRef.current.nearBike) {
-      worldRef.current.nearBike = false;
-      onNearBike(false);
+      // Nearest enterable building door.
+      const door = nearestDoor(world);
+      if (door !== world.nearDoor) {
+        world.nearDoor = door;
+        onNearDoor(door);
+      }
+    } else {
+      if (worldRef.current.nearBike) {
+        worldRef.current.nearBike = false;
+        onNearBike(false);
+      }
+      if (worldRef.current.nearDoor !== null) {
+        worldRef.current.nearDoor = null;
+        onNearDoor(null);
+      }
     }
 
     // Throttle speed + clock HUD updates to ~8 Hz.
@@ -105,6 +123,8 @@ export default function Game() {
   const worldRef = useRef<GameWorld>(createInitialWorld());
   const [mode, setMode] = useState<RideMode>("walk");
   const [nearBike, setNearBike] = useState(false);
+  const [nearDoor, setNearDoor] = useState<number | null>(null);
+  const [interior, setInterior] = useState<BuildingType | null>(null);
   const [speedKmh, setSpeedKmh] = useState(0);
   const [camLocked, setCamLocked] = useState(false);
   const [mutedUi, setMutedUi] = useState(false);
@@ -127,6 +147,8 @@ export default function Game() {
   // Mirrors for the key handler (avoids stale closures).
   const modeRef = useRef<RideMode>("walk");
   const nearBikeRef = useRef(false);
+  const nearDoorRef = useRef<number | null>(null);
+  const interiorRef = useRef<BuildingType | null>(null);
   const mutedRef = useRef(false);
   const pausedRef = useRef(false);
 
@@ -146,6 +168,11 @@ export default function Game() {
   const handleNearBike = useCallback((near: boolean) => {
     nearBikeRef.current = near;
     setNearBike(near);
+  }, []);
+
+  const handleNearDoor = useCallback((idx: number | null) => {
+    nearDoorRef.current = idx;
+    setNearDoor(idx);
   }, []);
 
   const handleLockChange = useCallback((locked: boolean) => {
@@ -209,8 +236,14 @@ export default function Game() {
     modeRef.current = "walk";
     w.mode = "walk";
     setMode("walk");
+    interiorRef.current = null;
+    w.interior = null;
+    setInterior(null);
     nearBikeRef.current = false;
     setNearBike(false);
+    nearDoorRef.current = null;
+    w.nearDoor = null;
+    setNearDoor(null);
     pausedRef.current = false;
     w.paused = false;
     setPausedUi(false);
@@ -254,6 +287,39 @@ export default function Game() {
       }
       if (e.code !== "KeyE") return;
       const world = worldRef.current;
+
+      // --- Building interiors: enter from a door, exit from inside. ---
+      if (interiorRef.current !== null) {
+        // Exit: restore the saved outdoor position, nudged just outside the door.
+        world.playerPos.copy(world.returnPos);
+        world.playerPos.z += 1.4; // step back out of the doorway
+        world.playerYaw = world.returnYaw;
+        world.playerSpeed = 0;
+        world.playerVelY = 0;
+        interiorRef.current = null;
+        world.interior = null;
+        setInterior(null);
+        return;
+      }
+      if (modeRef.current === "walk" && nearDoorRef.current !== null) {
+        const door = BUILDING_DOORS[nearDoorRef.current];
+        // Remember where to come back to.
+        world.returnPos.copy(world.playerPos);
+        world.returnYaw = world.playerYaw;
+        // Teleport into the room, facing in from the exit.
+        world.playerPos.set(...INTERIOR_SPAWN);
+        world.playerYaw = door.yaw;
+        world.playerSpeed = 0;
+        world.playerVelY = 0;
+        world.nearDoor = null;
+        nearDoorRef.current = null;
+        setNearDoor(null);
+        interiorRef.current = door.type;
+        world.interior = door.type;
+        setInterior(door.type);
+        return;
+      }
+
       if (modeRef.current === "ride") {
         // Dismount: place the rider beside the bike, facing its direction.
         const yaw = world.bikeYaw;
@@ -305,24 +371,33 @@ export default function Game() {
             }}
             style={{ width: "100%", height: "100%" }}
           >
-        <color attach="background" args={[FOG_COLOR]} />
-        <fog attach="fog" args={[FOG_COLOR, FOG_NEAR, FOG_FAR]} />
+        <color attach="background" args={[interior ? "#1a1a1a" : FOG_COLOR]} />
+        {!interior && <fog attach="fog" args={[FOG_COLOR, FOG_NEAR, FOG_FAR]} />}
         <Suspense fallback={null}>
-          <World worldRef={worldRef} />
-          <Terrain />
-          <Sky worldRef={worldRef} />
-          <Library />
-          <Village />
-          <Water worldRef={worldRef} />
-          <Birds worldRef={worldRef} />
-          <Motorcycle worldRef={worldRef} />
+          {interior ? (
+            // Interior scene: only the room, the player, and the camera.
+            <Interior type={interior} />
+          ) : (
+            // Outdoor town scene.
+            <>
+              <World worldRef={worldRef} />
+              <Terrain />
+              <Sky worldRef={worldRef} />
+              <Village />
+              <Water worldRef={worldRef} />
+              <Birds worldRef={worldRef} />
+              <Motorcycle worldRef={worldRef} />
+              <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} engineOn={engineUi} />
+              <DoorPrompt worldRef={worldRef} visible={nearDoor !== null && mode === "walk"} />
+              <SkidMarks worldRef={worldRef} />
+            </>
+          )}
           <Player worldRef={worldRef} />
           <ThirdPersonCamera worldRef={worldRef} onLockChange={handleLockChange} />
-          <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} engineOn={engineUi} />
-          <SkidMarks worldRef={worldRef} />
           <GameRig
             worldRef={worldRef}
             onNearBike={handleNearBike}
+            onNearDoor={handleNearDoor}
             onSpeed={setSpeedKmh}
             onTime={handleTime}
           />
@@ -342,20 +417,32 @@ export default function Game() {
         lightsOn={lightsUi}
       />
       <Speedometer worldRef={worldRef} speedKmh={speedKmh} visible={mode === "ride"} />
-      <Minimap
-        worldRef={worldRef}
-        northUp={mapNorthUp}
-        onToggleOrientation={() => setMapNorthUp((v) => !v)}
-        onOpenMap={openMap}
-      />
-      {mapOpen && (
-        <BigMap
-          worldRef={worldRef}
-          northUp={mapNorthUp}
-          onClose={closeMap}
-        />
+      {!interior && (
+        <>
+          <Minimap
+            worldRef={worldRef}
+            northUp={mapNorthUp}
+            onToggleOrientation={() => setMapNorthUp((v) => !v)}
+            onOpenMap={openMap}
+          />
+          {mapOpen && (
+            <BigMap worldRef={worldRef} northUp={mapNorthUp} onClose={closeMap} />
+          )}
+          <GeoReadout worldRef={worldRef} />
+        </>
       )}
-      <GeoReadout worldRef={worldRef} />
+
+      {/* Interior banner + exit hint */}
+      {interior && (
+        <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex flex-col items-center gap-2 select-none">
+          <div className="rounded-full border border-white/15 bg-black/60 px-5 py-2 text-base font-semibold tracking-wide text-white backdrop-blur-sm">
+            {INTERIOR_THEMES[interior].title}
+          </div>
+          <div className="rounded-full bg-black/50 px-4 py-1 text-sm text-white/80 backdrop-blur-sm">
+            Press <span className="font-mono text-amber-300">E</span> to exit
+          </div>
+        </div>
+      )}
       {/* Center crosshair while the cursor is captured in mouse-look */}
       {camLocked && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center select-none">

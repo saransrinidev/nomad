@@ -7,10 +7,6 @@ export type RideMode = "walk" | "ride";
 export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
 export const BIKE_SPAWN: [number, number, number] = [3.5, 0, 2.5];
 export const BIKE_SPAWN_YAW = -0.6;
-export const LIBRARY_POSITION: [number, number, number] = [22, 0, -18];
-
-/** Building footprint used for collision (half-extents + margin). */
-export const LIBRARY_COLLIDER = { halfX: 8.5, halfZ: 6.5 };
 
 export const INTERACT_DISTANCE = 3.2;
 

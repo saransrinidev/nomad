@@ -4,16 +4,20 @@
 
 import {
   GRAVITY,
-  LIBRARY_COLLIDER,
-  LIBRARY_POSITION,
   PLAYER_ACCEL,
   PLAYER_TURN_SPEED,
   RUN_SPEED,
   WALK_SPEED,
 } from "./gameConstants";
-import { VILLAGE_COLLIDERS } from "./map/village";
+import { BUILDING_DOORS, VILLAGE_COLLIDERS } from "./map/village";
 import { groundHeight, WORLD_HALF } from "./map/terrain";
 import { waterAt } from "./map/water";
+import {
+  ROOM_HALF_X,
+  ROOM_HALF_Z,
+  WALL_T,
+} from "./map/interior";
+import { INTERACT_DISTANCE } from "./gameConstants";
 import type { GameWorld } from "./state";
 
 function damp(current: number, target: number, rate: number, dt: number) {
@@ -27,24 +31,6 @@ function lerpAngle(current: number, target: number, rate: number, dt: number) {
   if (delta < -Math.PI) delta += Math.PI * 2;
   const t = 1 - Math.exp(-rate * dt);
   return current + delta * t;
-}
-
-/** Push a point out of the library's box collider (XZ plane). */
-export function collideLibrary(
-  x: number,
-  z: number,
-  radius: number,
-): { x: number; z: number } {
-  const [lx, , lz] = LIBRARY_POSITION;
-  const dx = x - lx;
-  const dz = z - lz;
-  const px = LIBRARY_COLLIDER.halfX + radius - Math.abs(dx);
-  const pz = LIBRARY_COLLIDER.halfZ + radius - Math.abs(dz);
-  if (px > 0 && pz > 0) {
-    if (px < pz) return { x: lx + Math.sign(dx || 1) * (LIBRARY_COLLIDER.halfX + radius), z };
-    return { x, z: lz + Math.sign(dz || 1) * (LIBRARY_COLLIDER.halfZ + radius) };
-  }
-  return { x, z };
 }
 
 function collideBox(
@@ -67,17 +53,50 @@ function collideBox(
   return { x, z };
 }
 
-/** World collision: library + village buildings. Water is wadable. */
+/** World collision: village hut footprints. Water is wadable. */
 export function collideWorld(
   x: number,
   z: number,
   radius: number,
 ): { x: number; z: number } {
-  let p = collideLibrary(x, z, radius);
+  let p = { x, z };
   for (const c of VILLAGE_COLLIDERS) {
     p = collideBox(p.x, p.z, radius, c.x, c.z, c.halfX, c.halfZ);
   }
   return p;
+}
+
+/** Keep the player inside the interior room (local coords centered at origin). */
+export function clampToRoom(
+  x: number,
+  z: number,
+  radius: number,
+): { x: number; z: number } {
+  const lx = ROOM_HALF_X - WALL_T - radius;
+  const lz = ROOM_HALF_Z - WALL_T - radius;
+  return {
+    x: Math.min(lx, Math.max(-lx, x)),
+    z: Math.min(lz, Math.max(-lz, z)),
+  };
+}
+
+/**
+ * Index of the nearest enterable door within INTERACT_DISTANCE, or null.
+ * Outdoors only — used by GameRig to drive the "Press E to enter" prompt.
+ */
+export function nearestDoor(world: GameWorld): number | null {
+  if (world.mode !== "walk" || world.interior !== null) return null;
+  let best: number | null = null;
+  let bestD = INTERACT_DISTANCE;
+  for (let i = 0; i < BUILDING_DOORS.length; i++) {
+    const d = BUILDING_DOORS[i];
+    const dist = Math.hypot(world.playerPos.x - d.x, world.playerPos.z - d.z);
+    if (dist < bestD) {
+      bestD = dist;
+      best = i;
+    }
+  }
+  return best;
 }
 
 export function updateOnFoot(world: GameWorld, dt: number) {
@@ -101,11 +120,15 @@ export function updateOnFoot(world: GameWorld, dt: number) {
     dirZ /= len;
   }
 
+  const inside = world.interior !== null;
+
   const running = keys.run && inZ > 0;
   let targetSpeed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
-  // Wading through shallow water drags movement down.
-  const wq = waterAt(world.playerPos.x, world.playerPos.z);
-  if (wq.inWater) targetSpeed *= Math.max(0.35, 1 - 0.55 * wq.depth);
+  // Wading through shallow water drags movement down (outdoors only).
+  if (!inside) {
+    const wq = waterAt(world.playerPos.x, world.playerPos.z);
+    if (wq.inWater) targetSpeed *= Math.max(0.35, 1 - 0.55 * wq.depth);
+  }
   world.playerSpeed = damp(world.playerSpeed, targetSpeed, PLAYER_ACCEL, step);
   world.playerMoving = world.playerSpeed > 0.25;
   world.playerRunning = running && world.playerMoving;
@@ -118,23 +141,33 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   // Move along the (normalized) input direction for consistent diagonal speed.
   world.playerPos.x += dirX * world.playerSpeed * step;
   world.playerPos.z += dirZ * world.playerSpeed * step;
-  // Shoreline: the island ends at the map edge, ocean beyond.
-  const B = WORLD_HALF;
-  world.playerPos.x = Math.min(B, Math.max(-B, world.playerPos.x));
-  world.playerPos.z = Math.min(B, Math.max(-B, world.playerPos.z));
 
-  // Designed-terrain ground (kept for future ramps/jumps).
-  const gy = groundHeight(world.playerPos.x, world.playerPos.z);
-  world.playerVelY -= GRAVITY * step;
-  world.playerPos.y += world.playerVelY * step;
-  if (world.playerPos.y <= gy) {
-    world.playerPos.y = gy;
+  if (inside) {
+    // Interior: flat floor at y=0, clamp to the room walls.
+    world.playerPos.y = 0;
     world.playerVelY = 0;
-  }
+    const room = clampToRoom(world.playerPos.x, world.playerPos.z, 0.5);
+    world.playerPos.x = room.x;
+    world.playerPos.z = room.z;
+  } else {
+    // Shoreline: the island ends at the map edge, ocean beyond.
+    const B = WORLD_HALF;
+    world.playerPos.x = Math.min(B, Math.max(-B, world.playerPos.x));
+    world.playerPos.z = Math.min(B, Math.max(-B, world.playerPos.z));
 
-  const fixed = collideWorld(world.playerPos.x, world.playerPos.z, 0.5);
-  world.playerPos.x = fixed.x;
-  world.playerPos.z = fixed.z;
+    // Designed-terrain ground (kept for future ramps/jumps).
+    const gy = groundHeight(world.playerPos.x, world.playerPos.z);
+    world.playerVelY -= GRAVITY * step;
+    world.playerPos.y += world.playerVelY * step;
+    if (world.playerPos.y <= gy) {
+      world.playerPos.y = gy;
+      world.playerVelY = 0;
+    }
+
+    const fixed = collideWorld(world.playerPos.x, world.playerPos.z, 0.5);
+    world.playerPos.x = fixed.x;
+    world.playerPos.z = fixed.z;
+  }
 
   // Walk-cycle phase for limb animation.
   if (world.playerMoving) {

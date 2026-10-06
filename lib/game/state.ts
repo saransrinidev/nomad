@@ -13,6 +13,7 @@ import {
   PLAYER_SPAWN,
   type RideMode,
 } from "./gameConstants";
+import type { BuildingType } from "./map/village";
 import { START_TIME } from "./map/time";
 
 export interface KeyState {
@@ -74,6 +75,15 @@ export interface GameWorld {
 
   // Interaction
   nearBike: boolean;
+  /** Index into BUILDING_DOORS of the door the player is standing at, or null. */
+  nearDoor: number | null;
+
+  // Interior scene
+  /** Building type whose interior the player is currently inside, or null outdoors. */
+  interior: BuildingType | null;
+  /** Outdoor position to restore when the player exits the building. */
+  returnPos: THREE.Vector3;
+  returnYaw: number;
 
   /** Time of day in game hours (0-24). 1 real minute = 1 game hour. */
   time: number;
@@ -109,6 +119,12 @@ export function createInitialWorld(): GameWorld {
     camManualZoom: false,
 
     nearBike: false,
+    nearDoor: null,
+
+    interior: null,
+    returnPos: new THREE.Vector3(...PLAYER_SPAWN),
+    returnYaw: 0,
+
     time: START_TIME,
   };
 }

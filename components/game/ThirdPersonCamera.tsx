@@ -177,12 +177,14 @@ export default function ThirdPersonCamera({
       lastModeRef.current = world.mode;
       worldRef.current.camManualZoom = false;
     }
-    const dist = worldRef.current.camManualZoom
-      ? world.camDistance
-      : world.mode === "ride"
-        ? CAM_RIDE_DISTANCE
-        : CAM_DISTANCE;
-    worldRef.current.camDistance = dist;
+    const dist = world.interior !== null
+      ? 4.2 // tight framing so the camera stays inside the room
+      : worldRef.current.camManualZoom
+        ? world.camDistance
+        : world.mode === "ride"
+          ? CAM_RIDE_DISTANCE
+          : CAM_DISTANCE;
+    if (world.interior === null) worldRef.current.camDistance = dist;
 
     const cp = Math.cos(world.camPitch);
     const sp = Math.sin(world.camPitch);

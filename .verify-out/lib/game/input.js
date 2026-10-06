@@ -1,0 +1,75 @@
+"use strict";
+// Keyboard input: a single global listener writes into the shared
+// mutable GameWorld (held in a ref, so no React re-renders) where useFrame
+// loops can poll keys. E (interact) is handled separately in Game.tsx
+// since it needs React state.
+"use client";
+// Keyboard input: a single global listener writes into the shared
+// mutable GameWorld (held in a ref, so no React re-renders) where useFrame
+// loops can poll keys. E (interact) is handled separately in Game.tsx
+// since it needs React state.
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.useKeyboardInput = useKeyboardInput;
+const react_1 = require("react");
+const CODE_MAP = {
+    KeyW: "forward",
+    ArrowUp: "forward",
+    KeyS: "back",
+    ArrowDown: "back",
+    KeyA: "left",
+    ArrowLeft: "left",
+    KeyD: "right",
+    ArrowRight: "right",
+};
+function useKeyboardInput(worldRef) {
+    (0, react_1.useEffect)(() => {
+        const down = (e) => {
+            const keys = worldRef.current.keys;
+            const dir = CODE_MAP[e.code];
+            if (dir) {
+                keys[dir] = true;
+                e.preventDefault();
+                return;
+            }
+            if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+                keys.run = true;
+                return;
+            }
+            if (e.code === "Space") {
+                keys.brake = true;
+                e.preventDefault();
+            }
+        };
+        const up = (e) => {
+            const keys = worldRef.current.keys;
+            const dir = CODE_MAP[e.code];
+            if (dir) {
+                keys[dir] = false;
+                return;
+            }
+            if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+                keys.run = false;
+                return;
+            }
+            if (e.code === "Space")
+                keys.brake = false;
+        };
+        const blur = () => {
+            const keys = worldRef.current.keys;
+            keys.forward = false;
+            keys.back = false;
+            keys.left = false;
+            keys.right = false;
+            keys.run = false;
+            keys.brake = false;
+        };
+        window.addEventListener("keydown", down);
+        window.addEventListener("keyup", up);
+        window.addEventListener("blur", blur);
+        return () => {
+            window.removeEventListener("keydown", down);
+            window.removeEventListener("keyup", up);
+            window.removeEventListener("blur", blur);
+        };
+    }, [worldRef]);
+}

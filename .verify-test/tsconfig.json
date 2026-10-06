@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "baseUrl": "..",
+    "paths": { "@/*": ["./*"] },
+    "outDir": "../.verify-out",
+    "rootDir": ".."
+  },
+  "include": ["sim.ts", "../lib/game/**/*.ts"]
+}
