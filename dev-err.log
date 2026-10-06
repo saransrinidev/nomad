@@ -1,0 +1,26 @@
+⚠ Warning: Next.js ignored package-lock.json in C:\Users\DELL because it is outside the current Git repository (C:\Users\DELL\Desktop\nomad).
+ To use this directory, set `turbopack.root` in your Next.js config.
+
+[browser] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+[browser] ObjectMultiplex - orphaned data for stream "metamask-multichain-provider" (moz-extension://0002c21c-2285-4be2-8fd6-79790fb7ff7c/scripts/inpage.js;:1:28380)
+[browser] ObjectMultiplex - orphaned data for stream "metamask-multichain-provider" (moz-extension://0002c21c-2285-4be2-8fd6-79790fb7ff7c/scripts/inpage.js;:1:28380)
+[browser] ObjectMultiplex - orphaned data for stream "metamask-multichain-provider" (moz-extension://0002c21c-2285-4be2-8fd6-79790fb7ff7c/scripts/inpage.js;:1:28380)
+[browser] ObjectMultiplex - orphaned data for stream "metamask-multichain-provider" (moz-extension://0002c21c-2285-4be2-8fd6-79790fb7ff7c/scripts/inpage.js;:1:28380)
+[browser] THREE.WebGLShadowMap: PCFSoftShadowMap has been removed. Using PCFShadowMap instead.
+[browser] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+[browser] THREE.WebGLShadowMap: PCFSoftShadowMap has been removed. Using PCFShadowMap instead.
+[browser] ObjectMultiplex - orphaned data for stream "metamask-multichain-provider" (moz-extension://0002c21c-2285-4be2-8fd6-79790fb7ff7c/scripts/inpage.js;:1:28380)
+[browser] ObjectMultiplex - orphaned data for stream "metamask-multichain-provider" (moz-extension://0002c21c-2285-4be2-8fd6-79790fb7ff7c/scripts/inpage.js;:1:28380)
+[browser] ObjectMultiplex - orphaned data for stream "metamask-multichain-provider" (moz-extension://0002c21c-2285-4be2-8fd6-79790fb7ff7c/scripts/inpage.js;:1:28380)
+[browser] ObjectMultiplex - orphaned data for stream "metamask-multichain-provider" (moz-extension://0002c21c-2285-4be2-8fd6-79790fb7ff7c/scripts/inpage.js;:1:28380)
+⚠ Blocked cross-origin request to Next.js dev resource /_next/hmr from "192.168.1.5".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['192.168.1.5'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
