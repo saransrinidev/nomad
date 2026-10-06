@@ -115,6 +115,7 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
 
   useFrame(() => {
     const world = worldRef.current;
+    if (world.paused) return;
     const { dummy, target } = scratch;
     const focus = getFocusPoint(world);
     // Snap the ground to whole tiles so the repeating texture stays fixed

@@ -22,11 +22,15 @@ export const PLAYER_TURN_SPEED = 12; // yaw smoothing rate
 export const GRAVITY = 22;
 
 // --- Arcade bike movement (top speed: 150 km/h = 41.7 m/s) ---
+// Torque taper: punchy launch that fades toward top speed, like a real
+// power curve (0-100 km/h ~4-5s, full 150 in ~9-10s).
 export const BIKE_MAX_SPEED = 41.7;
 export const BIKE_MAX_REVERSE = -7;
-export const BIKE_ACCEL = 18;
+export const BIKE_LAUNCH_ACCEL = 9;
+export const BIKE_TAPER = 0.92;
 export const BIKE_BRAKE = 34;
-export const BIKE_DRAG = 8;
+export const BIKE_DRAG = 2.5; // base drag; plus speed-proportional engine braking
+export const BIKE_ENGINE_BRAKING = 3.2; // extra drag at full speed when off throttle
 export const BIKE_REVERSE_ACCEL = 10;
 export const BIKE_TURN_RATE = 2.1;
 export const BIKE_STEER_SPEED = 6;

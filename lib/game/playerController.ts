@@ -11,6 +11,7 @@ import {
   RUN_SPEED,
   WALK_SPEED,
 } from "./gameConstants";
+import { VILLAGE_COLLIDERS } from "./map/village";
 import type { GameWorld } from "./state";
 
 function damp(current: number, target: number, rate: number, dt: number) {
@@ -42,6 +43,39 @@ export function collideLibrary(
     return { x, z: lz + Math.sign(dz || 1) * (LIBRARY_COLLIDER.halfZ + radius) };
   }
   return { x, z };
+}
+
+function collideBox(
+  x: number,
+  z: number,
+  radius: number,
+  bx: number,
+  bz: number,
+  halfX: number,
+  halfZ: number,
+): { x: number; z: number } {
+  const dx = x - bx;
+  const dz = z - bz;
+  const px = halfX + radius - Math.abs(dx);
+  const pz = halfZ + radius - Math.abs(dz);
+  if (px > 0 && pz > 0) {
+    if (px < pz) return { x: bx + Math.sign(dx || 1) * (halfX + radius), z };
+    return { x, z: bz + Math.sign(dz || 1) * (halfZ + radius) };
+  }
+  return { x, z };
+}
+
+/** World collision: library + all village buildings. Cheap enough per frame. */
+export function collideWorld(
+  x: number,
+  z: number,
+  radius: number,
+): { x: number; z: number } {
+  let p = collideLibrary(x, z, radius);
+  for (const c of VILLAGE_COLLIDERS) {
+    p = collideBox(p.x, p.z, radius, c.x, c.z, c.halfX, c.halfZ);
+  }
+  return p;
 }
 
 export function updateOnFoot(world: GameWorld, dt: number) {
@@ -88,7 +122,7 @@ export function updateOnFoot(world: GameWorld, dt: number) {
     world.playerVelY = 0;
   }
 
-  const fixed = collideLibrary(world.playerPos.x, world.playerPos.z, 0.5);
+  const fixed = collideWorld(world.playerPos.x, world.playerPos.z, 0.5);
   world.playerPos.x = fixed.x;
   world.playerPos.z = fixed.z;
 

@@ -167,6 +167,7 @@ export default function ThirdPersonCamera({
 
   useFrame(({ camera }) => {
     const world = worldRef.current;
+    if (world.paused) return;
     const { desired, lookAt } = vectors;
     const focus = getFocusPoint(world);
 

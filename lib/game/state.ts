@@ -37,6 +37,8 @@ export function createEmptyKeys(): KeyState {
 export interface GameWorld {
   mode: RideMode;
   keys: KeyState;
+  /** Freeze all simulation (ESC menu). Rendering continues. */
+  paused: boolean;
 
   // Player (on-foot) state
   playerPos: THREE.Vector3;
@@ -52,6 +54,10 @@ export interface GameWorld {
   bikeYaw: number;
   bikeSpeed: number;
   bikeSteer: number;
+  /** True velocity (lags heading while drifting). */
+  bikeVel: THREE.Vector3;
+  /** Handbrake slide active (for skid marks + HUD). */
+  bikeDrift: boolean;
   wheelSpin: number;
 
   // Shared third-person camera orbit state
@@ -69,6 +75,7 @@ export function createInitialWorld(): GameWorld {
   return {
     mode: "walk",
     keys: createEmptyKeys(),
+    paused: false,
 
     playerPos: new THREE.Vector3(...PLAYER_SPAWN),
     playerYaw: 0,
@@ -82,6 +89,8 @@ export function createInitialWorld(): GameWorld {
     bikeYaw: BIKE_SPAWN_YAW,
     bikeSpeed: 0,
     bikeSteer: 0,
+    bikeVel: new THREE.Vector3(),
+    bikeDrift: false,
     wheelSpin: 0,
 
     camYaw: Math.PI,

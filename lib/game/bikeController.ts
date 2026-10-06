@@ -3,16 +3,18 @@
 // Same framework-free style as playerController for future server reuse.
 
 import {
-  BIKE_ACCEL,
   BIKE_BRAKE,
   BIKE_DRAG,
+  BIKE_ENGINE_BRAKING,
+  BIKE_LAUNCH_ACCEL,
   BIKE_MAX_REVERSE,
   BIKE_MAX_SPEED,
   BIKE_REVERSE_ACCEL,
   BIKE_STEER_SPEED,
+  BIKE_TAPER,
   BIKE_TURN_RATE,
 } from "./gameConstants";
-import { collideLibrary } from "./playerController";
+import { collideWorld } from "./playerController";
 import type { GameWorld } from "./state";
 
 function damp(current: number, target: number, rate: number, dt: number) {
@@ -40,7 +42,9 @@ export function updateBike(world: GameWorld, dt: number) {
   const reverse = keys.back;
 
   if (throttle) {
-    world.bikeSpeed += BIKE_ACCEL * step;
+    // Torque taper: full punch off the line, fading toward top speed.
+    const frac = clamp(world.bikeSpeed / BIKE_MAX_SPEED, 0, 1);
+    world.bikeSpeed += BIKE_LAUNCH_ACCEL * (1 - BIKE_TAPER * frac * frac) * step;
   } else if (reverse) {
     if (world.bikeSpeed > 0.5) {
       // S while moving forward = brake
@@ -49,8 +53,9 @@ export function updateBike(world: GameWorld, dt: number) {
       world.bikeSpeed -= BIKE_REVERSE_ACCEL * step;
     }
   } else {
-    // Coast down with drag
-    const drag = BIKE_DRAG * step;
+    // Coast down: base drag plus speed-proportional engine braking.
+    const frac = clamp(Math.abs(world.bikeSpeed) / BIKE_MAX_SPEED, 0, 1);
+    const drag = (BIKE_DRAG + BIKE_ENGINE_BRAKING * frac) * step;
     if (Math.abs(world.bikeSpeed) <= drag) world.bikeSpeed = 0;
     else world.bikeSpeed -= Math.sign(world.bikeSpeed) * drag;
   }
@@ -72,25 +77,38 @@ export function updateBike(world: GameWorld, dt: number) {
   const stability =
     1 - 0.55 * clamp(Math.abs(world.bikeSpeed) / BIKE_MAX_SPEED, 0, 1);
   const direction = world.bikeSpeed >= 0 ? 1 : -1;
+  // Drift: braking + steering at speed breaks traction. The bike rotates
+  // faster while velocity lags behind the heading (power-slide).
+  const braking =
+    keys.brake || (keys.back && world.bikeSpeed > 0.5);
+  const drifting = braking && steerInput !== 0 && world.bikeSpeed > 8;
+  world.bikeDrift = drifting;
   world.bikeYaw +=
     world.bikeSteer *
     BIKE_TURN_RATE *
     speedFactor *
     stability *
     direction *
+    (drifting ? 1.6 : 1) *
     step;
 
+  // Velocity follows heading with grip (snappy) or slides (drift).
   const fx = Math.sin(world.bikeYaw);
   const fz = Math.cos(world.bikeYaw);
-  world.bikePos.x += fx * world.bikeSpeed * step;
-  world.bikePos.z += fz * world.bikeSpeed * step;
+  const grip = drifting ? 2.2 : 10;
+  const k = 1 - Math.exp(-grip * step);
+  world.bikeVel.x += (fx * world.bikeSpeed - world.bikeVel.x) * k;
+  world.bikeVel.z += (fz * world.bikeSpeed - world.bikeVel.z) * k;
+  world.bikePos.x += world.bikeVel.x * step;
+  world.bikePos.z += world.bikeVel.z * step;
   world.bikePos.y = 0;
 
-  const fixed = collideLibrary(world.bikePos.x, world.bikePos.z, 1.1);
+  const fixed = collideWorld(world.bikePos.x, world.bikePos.z, 1.1);
   if (fixed.x !== world.bikePos.x || fixed.z !== world.bikePos.z) {
     world.bikePos.x = fixed.x;
     world.bikePos.z = fixed.z;
     world.bikeSpeed *= 0.3; // scrub speed on impact
+    world.bikeVel.multiplyScalar(0.3);
   }
 
   world.wheelSpin += (world.bikeSpeed / 0.35) * step;

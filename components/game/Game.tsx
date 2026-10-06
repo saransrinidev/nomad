@@ -12,17 +12,25 @@ import World from "./World";
 import Player from "./Player";
 import Motorcycle from "./Motorcycle";
 import Library from "./Library";
+import Village from "./Village";
 import ThirdPersonCamera from "./ThirdPersonCamera";
 import GameHUD from "./GameHUD";
 import BikePrompt from "./BikePrompt";
 import Speedometer from "./Speedometer";
+import Minimap from "./Minimap";
+import PauseMenu from "./PauseMenu";
+import SkidMarks from "./SkidMarks";
+import GeoReadout from "./GeoReadout";
 import { useKeyboardInput } from "@/lib/game/input";
 import { ensureAudio, setAudioMuted } from "@/lib/game/audio";
 import {
+  BIKE_SPAWN,
+  BIKE_SPAWN_YAW,
   FOG_COLOR,
   FOG_FAR,
   FOG_NEAR,
   INTERACT_DISTANCE,
+  PLAYER_SPAWN,
   type RideMode,
 } from "@/lib/game/gameConstants";
 import { createInitialWorld, type GameWorld } from "@/lib/game/state";
@@ -46,6 +54,7 @@ function GameRig({
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const world = worldRef.current;
+    if (world.paused) return;
 
     if (world.mode === "walk") {
       const dx = world.playerPos.x - world.bikePos.x;
@@ -84,11 +93,14 @@ export default function Game() {
   const [speedKmh, setSpeedKmh] = useState(0);
   const [camLocked, setCamLocked] = useState(false);
   const [mutedUi, setMutedUi] = useState(false);
+  const [pausedUi, setPausedUi] = useState(false);
+  const [mapNorthUp, setMapNorthUp] = useState(true);
 
   // Mirrors for the key handler (avoids stale closures).
   const modeRef = useRef<RideMode>("walk");
   const nearBikeRef = useRef(false);
   const mutedRef = useRef(false);
+  const pausedRef = useRef(false);
 
   useKeyboardInput(worldRef);
 
@@ -112,17 +124,58 @@ export default function Game() {
     setCamLocked(locked);
   }, []);
 
-  // E = mount / dismount, M = mute.
+  const setPaused = useCallback((p: boolean) => {
+    pausedRef.current = p;
+    worldRef.current.paused = p;
+    setPausedUi(p);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    const m = !mutedRef.current;
+    mutedRef.current = m;
+    setAudioMuted(m);
+    setMutedUi(m);
+  }, []);
+
+  const handleRespawn = useCallback(() => {
+    const w = worldRef.current;
+    w.playerPos.set(...PLAYER_SPAWN);
+    w.playerYaw = 0;
+    w.playerVelY = 0;
+    w.playerSpeed = 0;
+    w.bikePos.set(...BIKE_SPAWN);
+    w.bikeYaw = BIKE_SPAWN_YAW;
+    w.bikeSpeed = 0;
+    w.bikeSteer = 0;
+    w.bikeVel.set(0, 0, 0);
+    w.bikeDrift = false;
+    modeRef.current = "walk";
+    w.mode = "walk";
+    setMode("walk");
+    nearBikeRef.current = false;
+    setNearBike(false);
+    pausedRef.current = false;
+    w.paused = false;
+    setPausedUi(false);
+  }, []);
+
+  // E = mount / dismount, M = mute, ESC / P = pause menu.
+  // (ESC while pointer-locked is consumed by the browser to exit the lock,
+  // so P also toggles the menu.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code === "KeyM" && !e.repeat) {
-        const m = !mutedRef.current;
-        mutedRef.current = m;
-        setAudioMuted(m);
-        setMutedUi(m);
+        toggleMute();
         return;
       }
-      if (e.code !== "KeyE" || e.repeat) return;
+      if ((e.code === "Escape" || e.code === "KeyP") && !e.repeat) {
+        if (e.code === "KeyP" && document.pointerLockElement) {
+          document.exitPointerLock();
+        }
+        setPaused(!pausedRef.current);
+        return;
+      }
+      if (e.code !== "KeyE" || e.repeat || pausedRef.current) return;
       const world = worldRef.current;
       if (modeRef.current === "ride") {
         // Dismount: place the rider beside the bike, facing its direction.
@@ -135,11 +188,14 @@ export default function Game() {
         world.playerYaw = yaw;
         world.playerVelY = 0;
         world.playerSpeed = 0;
+        world.bikeDrift = false;
         modeRef.current = "walk";
         world.mode = "walk";
         setMode("walk");
       } else if (nearBikeRef.current) {
         world.bikeSpeed = 0;
+        world.bikeVel.set(0, 0, 0);
+        world.bikeDrift = false;
         modeRef.current = "ride";
         world.mode = "ride";
         setMode("ride");
@@ -147,7 +203,7 @@ export default function Game() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [toggleMute, setPaused]);
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#bfe3f2] touch-none">
@@ -163,10 +219,12 @@ export default function Game() {
         <Suspense fallback={null}>
           <World worldRef={worldRef} />
           <Library />
+          <Village />
           <Motorcycle worldRef={worldRef} />
           <Player worldRef={worldRef} />
           <ThirdPersonCamera worldRef={worldRef} onLockChange={handleLockChange} />
           <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} />
+          <SkidMarks worldRef={worldRef} />
           <GameRig
             worldRef={worldRef}
             onNearBike={handleNearBike}
@@ -177,11 +235,27 @@ export default function Game() {
 
       <GameHUD mode={mode} speedKmh={speedKmh} camLocked={camLocked} muted={mutedUi} />
       <Speedometer worldRef={worldRef} speedKmh={speedKmh} visible={mode === "ride"} />
+      <Minimap
+        worldRef={worldRef}
+        northUp={mapNorthUp}
+        onToggleOrientation={() => setMapNorthUp((v) => !v)}
+      />
+      <GeoReadout worldRef={worldRef} />
       {/* Center crosshair while the cursor is captured in mouse-look */}
       {camLocked && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center select-none">
           <div className="h-1.5 w-1.5 rounded-full bg-white/90 shadow-[0_0_6px_rgba(0,0,0,0.8)]" />
         </div>
+      )}
+      {pausedUi && (
+        <PauseMenu
+          onResume={() => setPaused(false)}
+          muted={mutedUi}
+          onToggleMute={toggleMute}
+          onRespawn={handleRespawn}
+          mapNorthUp={mapNorthUp}
+          onToggleMap={() => setMapNorthUp((v) => !v)}
+        />
       )}
     </div>
   );

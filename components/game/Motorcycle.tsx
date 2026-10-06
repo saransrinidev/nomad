@@ -26,6 +26,11 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const world = worldRef.current;
+    if (world.paused) {
+      // Fade the engine out while paused, freeze everything else.
+      updateEngine(0, false, dt);
+      return;
+    }
     if (world.mode === "ride") updateBike(world, dt);
     // Engine audio follows every frame (ignition on mount, fade on exit).
     updateEngine(world.bikeSpeed, world.mode === "ride", dt);

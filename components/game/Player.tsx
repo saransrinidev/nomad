@@ -31,6 +31,7 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const world = worldRef.current;
+    if (world.paused) return;
 
     // Torso stays upright; only the arms reach out (sprint adds a slight tuck).
     const leanTarget = world.mode === "ride" ? 0 : world.playerRunning ? 0.1 : 0;

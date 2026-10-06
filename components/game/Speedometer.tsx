@@ -40,6 +40,7 @@ export default function Speedometer({
   visible: boolean;
 }) {
   const needleRef = useRef<SVGGElement>(null);
+  const driftRef = useRef<HTMLDivElement>(null);
   const angleRef = useRef(START_ANGLE);
   const lastRef = useRef(0);
 
@@ -87,6 +88,9 @@ export default function Speedometer({
         "transform",
         `rotate(${angleRef.current.toFixed(2)} ${CX} ${CY})`,
       );
+      if (driftRef.current) {
+        driftRef.current.style.opacity = worldRef.current.bikeDrift ? "1" : "0";
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -99,6 +103,13 @@ export default function Speedometer({
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center select-none">
       <div className="relative rounded-full border border-white/15 bg-black/45 p-2 backdrop-blur-sm">
+        {/* DRIFT indicator */}
+        <div
+          ref={driftRef}
+          className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-amber-300/40 bg-amber-950/80 px-3 py-0.5 text-[11px] font-black tracking-widest text-amber-300 uppercase opacity-0 transition-opacity duration-150"
+        >
+          Drift
+        </div>
         <svg width="208" height="208" viewBox="0 0 200 200">
           {/* Dial face + metal bezel */}
           <circle cx={CX} cy={CY} r="97" fill={DIAL_FACE} />
