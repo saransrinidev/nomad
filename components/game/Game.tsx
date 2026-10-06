@@ -14,8 +14,10 @@ import Motorcycle from "./Motorcycle";
 import Library from "./Library";
 import ThirdPersonCamera from "./ThirdPersonCamera";
 import GameHUD from "./GameHUD";
-import InteractionPrompt from "./InteractionPrompt";
+import BikePrompt from "./BikePrompt";
+import Speedometer from "./Speedometer";
 import { useKeyboardInput } from "@/lib/game/input";
+import { ensureAudio, setAudioMuted } from "@/lib/game/audio";
 import {
   FOG_COLOR,
   FOG_FAR,
@@ -81,12 +83,25 @@ export default function Game() {
   const [nearBike, setNearBike] = useState(false);
   const [speedKmh, setSpeedKmh] = useState(0);
   const [camLocked, setCamLocked] = useState(false);
+  const [mutedUi, setMutedUi] = useState(false);
 
-  // Mirrors for the E-key handler (avoids stale closures).
+  // Mirrors for the key handler (avoids stale closures).
   const modeRef = useRef<RideMode>("walk");
   const nearBikeRef = useRef(false);
+  const mutedRef = useRef(false);
 
   useKeyboardInput(worldRef);
+
+  // Browsers require a user gesture before audio may start.
+  useEffect(() => {
+    const unlock = () => ensureAudio();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
   const handleNearBike = useCallback((near: boolean) => {
     nearBikeRef.current = near;
@@ -97,9 +112,16 @@ export default function Game() {
     setCamLocked(locked);
   }, []);
 
-  // E = mount / dismount.
+  // E = mount / dismount, M = mute.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === "KeyM" && !e.repeat) {
+        const m = !mutedRef.current;
+        mutedRef.current = m;
+        setAudioMuted(m);
+        setMutedUi(m);
+        return;
+      }
       if (e.code !== "KeyE" || e.repeat) return;
       const world = worldRef.current;
       if (modeRef.current === "ride") {
@@ -144,6 +166,7 @@ export default function Game() {
           <Motorcycle worldRef={worldRef} />
           <Player worldRef={worldRef} />
           <ThirdPersonCamera worldRef={worldRef} onLockChange={handleLockChange} />
+          <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} />
           <GameRig
             worldRef={worldRef}
             onNearBike={handleNearBike}
@@ -152,8 +175,8 @@ export default function Game() {
         </Suspense>
       </Canvas>
 
-      <GameHUD mode={mode} speedKmh={speedKmh} camLocked={camLocked} />
-      <InteractionPrompt visible={nearBike && mode === "walk"} text="to ride" />
+      <GameHUD mode={mode} speedKmh={speedKmh} camLocked={camLocked} muted={mutedUi} />
+      <Speedometer worldRef={worldRef} speedKmh={speedKmh} visible={mode === "ride"} />
       {/* Center crosshair while the cursor is captured in mouse-look */}
       {camLocked && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center select-none">

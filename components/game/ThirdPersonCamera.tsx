@@ -1,9 +1,10 @@
 // Third-person orbit camera: rigidly follows the player (or bike when
-// riding) with no smoothing lag. Three ways to look around:
-//   - click-drag to orbit (always available)
+// riding) with no smoothing lag. Look controls:
+//   - HOLD right mouse button and move to look (release = camera stays put)
+//   - CTRL hides the cursor (pointer lock) for button-free mouse-look;
+//     CTRL again or ESC brings it back
 //   - mouse wheel to zoom (persists while driving until mount/dismount)
-//   - CTRL toggles pointer-lock mouse-look: cursor hides and plain mouse
-//     movement rotates the camera; CTRL again (or ESC) releases the cursor.
+// LMB does nothing; the right-click menu stays suppressed.
 
 "use client";
 
@@ -24,7 +25,7 @@ import {
 import { getFocusPoint, type GameWorld } from "@/lib/game/state";
 
 const LOCK_SENSITIVITY = 0.0025;
-const DRAG_SENSITIVITY = 0.0045;
+const HOLD_SENSITIVITY = 0.0042;
 
 export default function ThirdPersonCamera({
   worldRef,
@@ -34,7 +35,7 @@ export default function ThirdPersonCamera({
   onLockChange: (locked: boolean) => void;
 }) {
   const { gl } = useThree();
-  const dragging = useRef(false);
+  const holdingRMB = useRef(false);
   const last = useRef({ x: 0, y: 0 });
   const lockedRef = useRef(false);
   const lastModeRef = useRef<RideMode>("walk");
@@ -81,43 +82,53 @@ export default function ThirdPersonCamera({
 
     const onPointerLockChange = () => {
       setLocked(document.pointerLockElement === el);
-      dragging.current = false;
     };
 
-    // Cursor-free look while pointer-locked.
+    // Camera look: pointer-locked deltas when CTRL-locked, otherwise the
+    // camera moves only while the RIGHT mouse button is held (release =
+    // no movement). LMB does nothing; the RMB menu stays suppressed.
     const onMouseMove = (e: MouseEvent) => {
-      if (!lockedRef.current) return;
       const cam = worldRef.current;
-      cam.camYaw -= e.movementX * LOCK_SENSITIVITY;
-      cam.camPitch = THREE.MathUtils.clamp(
-        cam.camPitch + e.movementY * LOCK_SENSITIVITY,
-        CAM_MIN_PITCH,
-        CAM_MAX_PITCH,
-      );
+      if (lockedRef.current) {
+        cam.camYaw -= e.movementX * LOCK_SENSITIVITY;
+        cam.camPitch = THREE.MathUtils.clamp(
+          cam.camPitch + e.movementY * LOCK_SENSITIVITY,
+          CAM_MIN_PITCH,
+          CAM_MAX_PITCH,
+        );
+      }
     };
 
-    // Fallback drag-to-orbit when not locked.
     const onDown = (e: PointerEvent) => {
-      if (lockedRef.current) return;
-      dragging.current = true;
+      if (e.button !== 2 || lockedRef.current) return;
+      holdingRMB.current = true;
       last.current = { x: e.clientX, y: e.clientY };
       el.setPointerCapture(e.pointerId);
     };
     const onMove = (e: PointerEvent) => {
-      if (!dragging.current || lockedRef.current) return;
+      if (!holdingRMB.current || lockedRef.current) return;
       const dx = e.clientX - last.current.x;
       const dy = e.clientY - last.current.y;
       last.current = { x: e.clientX, y: e.clientY };
       const cam = worldRef.current;
-      cam.camYaw -= dx * DRAG_SENSITIVITY;
+      cam.camYaw -= dx * HOLD_SENSITIVITY;
       cam.camPitch = THREE.MathUtils.clamp(
-        cam.camPitch + dy * (DRAG_SENSITIVITY * 0.78),
+        cam.camPitch + dy * HOLD_SENSITIVITY * 0.8,
         CAM_MIN_PITCH,
         CAM_MAX_PITCH,
       );
     };
-    const onUp = () => {
-      dragging.current = false;
+    const onUp = (e: PointerEvent) => {
+      if (e.button === 2) holdingRMB.current = false;
+    };
+    const onCancel = () => {
+      holdingRMB.current = false;
+    };
+
+    // Mouse buttons do nothing: LMB drag-orbit is disabled and the
+    // right-click menu is suppressed — camera look is CTRL + mouse only.
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -137,6 +148,8 @@ export default function ThirdPersonCamera({
     el.addEventListener("pointerdown", onDown);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onCancel);
+    el.addEventListener("contextmenu", onContextMenu);
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       window.removeEventListener("keydown", onKey);
@@ -145,6 +158,8 @@ export default function ThirdPersonCamera({
       el.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onCancel);
+      el.removeEventListener("contextmenu", onContextMenu);
       el.removeEventListener("wheel", onWheel);
       if (document.pointerLockElement === el) document.exitPointerLock();
     };

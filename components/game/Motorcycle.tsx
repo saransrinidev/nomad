@@ -8,6 +8,7 @@ import { useRef, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { bikeLeanAngle, updateBike } from "@/lib/game/bikeController";
+import { updateEngine } from "@/lib/game/audio";
 import type { GameWorld } from "@/lib/game/state";
 
 const PAINT = "#c23b2e";
@@ -26,6 +27,8 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
     const dt = Math.min(rawDt, 0.05);
     const world = worldRef.current;
     if (world.mode === "ride") updateBike(world, dt);
+    // Engine audio follows every frame (ignition on mount, fade on exit).
+    updateEngine(world.bikeSpeed, world.mode === "ride", dt);
 
     root.current.position.copy(world.bikePos);
     root.current.rotation.set(0, world.bikeYaw, 0);
@@ -72,9 +75,9 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
           <boxGeometry args={[0.36, 0.34, 1.1]} />
           <meshStandardMaterial color={DARK} roughness={0.8} />
         </mesh>
-        {/* Fuel tank + painted body */}
-        <mesh position={[0, 0.82, 0.25]} castShadow>
-          <boxGeometry args={[0.4, 0.28, 0.62]} />
+        {/* Fuel tank + painted body (meets the saddle) */}
+        <mesh position={[0, 0.82, 0.33]} castShadow>
+          <boxGeometry args={[0.4, 0.28, 0.56]} />
           <meshStandardMaterial color={PAINT} roughness={0.5} />
         </mesh>
         {/* Front fairing */}
@@ -82,9 +85,9 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
           <boxGeometry args={[0.34, 0.42, 0.3]} />
           <meshStandardMaterial color={PAINT} roughness={0.5} />
         </mesh>
-        {/* Saddle */}
-        <mesh position={[0, 0.86, -0.55]} castShadow>
-          <boxGeometry args={[0.42, 0.14, 0.66]} />
+        {/* Saddle (sits under the rider, ahead of the tail unit) */}
+        <mesh position={[0, 0.86, -0.275]} castShadow>
+          <boxGeometry args={[0.42, 0.14, 0.65]} />
           <meshStandardMaterial color={SEAT} roughness={0.95} />
         </mesh>
         {/* Rear body */}
@@ -97,12 +100,18 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
           <cylinderGeometry args={[0.07, 0.09, 1.0, 10]} />
           <meshStandardMaterial color={METAL} roughness={0.35} metalness={0.7} />
         </mesh>
-        {/* Foot pegs for the rider */}
-        {[-0.3, 0.3].map((x) => (
-          <mesh key={x} position={[x, 0.44, 0.42]} castShadow>
-            <boxGeometry args={[0.16, 0.06, 0.22]} />
-            <meshStandardMaterial color={DARK} roughness={0.8} />
-          </mesh>
+        {/* Foot pegs under the rider's feet, with mounting brackets */}
+        {[-0.28, 0.28].map((x) => (
+          <group key={x}>
+            <mesh position={[x, 0.36, 0.08]} castShadow>
+              <boxGeometry args={[0.16, 0.06, 0.22]} />
+              <meshStandardMaterial color={DARK} roughness={0.8} />
+            </mesh>
+            <mesh position={[x, 0.42, 0.08]}>
+              <boxGeometry args={[0.05, 0.16, 0.05]} />
+              <meshStandardMaterial color={DARK} roughness={0.8} />
+            </mesh>
+          </group>
         ))}
         {/* Front forks */}
         {[-0.14, 0.14].map((x) => (
@@ -130,8 +139,9 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
           />
         </mesh>
 
-        {/* Handlebar (steers visually) */}
-        <group ref={handlebar} position={[0, 1.08, 0.72]}>
+        {/* Handlebar (steers visually) — pulled back over the tank so the
+            upright rider's hands rest on the grips */}
+        <group ref={handlebar} position={[0, 1.12, 0.22]}>
           <mesh rotation-z={Math.PI / 2} castShadow>
             <cylinderGeometry args={[0.04, 0.04, 0.72, 8]} />
             <meshStandardMaterial color={DARK} roughness={0.7} />
@@ -143,6 +153,13 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
             </mesh>
           ))}
         </group>
+        {/* Handlebar risers connecting the bar down toward the fork crown */}
+        {[-0.12, 0.12].map((x) => (
+          <mesh key={x} position={[x, 0.98, 0.34]} rotation-x={0.45} castShadow>
+            <cylinderGeometry args={[0.035, 0.035, 0.36, 8]} />
+            <meshStandardMaterial color={METAL} roughness={0.35} metalness={0.7} />
+          </mesh>
+        ))}
       </group>
     </group>
   );
