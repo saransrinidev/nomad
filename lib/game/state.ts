@@ -15,6 +15,7 @@ import {
 } from "./gameConstants";
 import type { BuildingType } from "./map/village";
 import { START_TIME } from "./map/time";
+import { initialTrainState, type TrainSimState } from "./map/railway";
 
 export interface KeyState {
   forward: boolean;
@@ -87,6 +88,11 @@ export interface GameWorld {
 
   /** Time of day in game hours (0-24). 1 real minute = 1 game hour. */
   time: number;
+
+  // Railway consists, one per line (simulated in Train.tsx useFrame).
+  trains: TrainSimState[];
+  /** Coach seat assignment while riding a train, null otherwise. */
+  trainSeat: { line: string; car: number; side: 1 | -1; lying: boolean } | null;
 }
 
 export function createInitialWorld(): GameWorld {
@@ -126,6 +132,9 @@ export function createInitialWorld(): GameWorld {
     returnYaw: 0,
 
     time: START_TIME,
+
+    trains: initialTrainState(),
+    trainSeat: null,
   };
 }
 

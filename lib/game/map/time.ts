@@ -59,19 +59,21 @@ interface SkyStop {
   exposure: number;
 }
 
+// NOTE: fogFar is tuned for the 16x16 km world — day values reach several
+// km so the far shore stays visible; nights stay murky on purpose.
 const STOPS: SkyStop[] = [
-  { h: 0, top: "#060a18", horizon: "#0d1526", fog: "#0d1526", light: "#9fb6ff", sunI: 0, moonI: 0.3, hemiI: 0.22, fogFar: 190, exposure: 0.9 },
-  { h: 5, top: "#060a18", horizon: "#0d1526", fog: "#0d1526", light: "#9fb6ff", sunI: 0, moonI: 0.3, hemiI: 0.22, fogFar: 190, exposure: 0.9 },
-  { h: 6, top: "#2c4a72", horizon: "#d98a5f", fog: "#c08a6a", light: "#ffb37a", sunI: 0.5, moonI: 0.12, hemiI: 0.4, fogFar: 210, exposure: 1.0 },
-  { h: 7, top: "#4a86c8", horizon: "#ffd9a8", fog: "#d9c2a8", light: "#ffd9a8", sunI: 1.1, moonI: 0, hemiI: 0.55, fogFar: 240, exposure: 1.02 },
-  { h: 7.5, top: "#3f8fd2", horizon: "#bfe3f2", fog: "#bfe3f2", light: "#fff2d9", sunI: 1.5, moonI: 0, hemiI: 0.55, fogFar: 260, exposure: 1.05 },
-  { h: 12, top: "#2f7fc9", horizon: "#bde0f2", fog: "#bfe3f2", light: "#fff6e8", sunI: 1.7, moonI: 0, hemiI: 0.55, fogFar: 280, exposure: 1.05 },
-  { h: 15, top: "#3580c4", horizon: "#c8dcea", fog: "#c2d4e2", light: "#ffedd0", sunI: 1.6, moonI: 0, hemiI: 0.55, fogFar: 270, exposure: 1.05 },
-  { h: 16.5, top: "#3573b8", horizon: "#c9d8e8", fog: "#c2d4e2", light: "#fff0d0", sunI: 1.5, moonI: 0, hemiI: 0.55, fogFar: 260, exposure: 1.05 },
-  { h: 17.8, top: "#3a5a94", horizon: "#f0a868", fog: "#d99878", light: "#ffab66", sunI: 0.9, moonI: 0, hemiI: 0.5, fogFar: 230, exposure: 1.08 },
-  { h: 18.8, top: "#1c2c52", horizon: "#c65f52", fog: "#8a5a5e", light: "#ff8a5a", sunI: 0.25, moonI: 0.12, hemiI: 0.35, fogFar: 200, exposure: 1.0 },
-  { h: 20, top: "#060a18", horizon: "#101a30", fog: "#0d1526", light: "#9fb6ff", sunI: 0, moonI: 0.3, hemiI: 0.25, fogFar: 190, exposure: 0.92 },
-  { h: 24, top: "#060a18", horizon: "#0d1526", fog: "#0d1526", light: "#9fb6ff", sunI: 0, moonI: 0.3, hemiI: 0.22, fogFar: 190, exposure: 0.9 },
+  { h: 0, top: "#060a18", horizon: "#0d1526", fog: "#0d1526", light: "#9fb6ff", sunI: 0, moonI: 0.3, hemiI: 0.22, fogFar: 800, exposure: 0.9 },
+  { h: 5, top: "#060a18", horizon: "#0d1526", fog: "#0d1526", light: "#9fb6ff", sunI: 0, moonI: 0.3, hemiI: 0.22, fogFar: 800, exposure: 0.9 },
+  { h: 6, top: "#2c4a72", horizon: "#d98a5f", fog: "#c08a6a", light: "#ffb37a", sunI: 0.5, moonI: 0.12, hemiI: 0.4, fogFar: 1500, exposure: 1.0 },
+  { h: 7, top: "#4a86c8", horizon: "#ffd9a8", fog: "#d9c2a8", light: "#ffd9a8", sunI: 1.1, moonI: 0, hemiI: 0.55, fogFar: 2200, exposure: 1.02 },
+  { h: 7.5, top: "#3f8fd2", horizon: "#bfe3f2", fog: "#bfe3f2", light: "#fff2d9", sunI: 1.5, moonI: 0, hemiI: 0.55, fogFar: 3000, exposure: 1.05 },
+  { h: 12, top: "#2f7fc9", horizon: "#bde0f2", fog: "#bfe3f2", light: "#fff6e8", sunI: 1.7, moonI: 0, hemiI: 0.55, fogFar: 3400, exposure: 1.05 },
+  { h: 15, top: "#3580c4", horizon: "#c8dcea", fog: "#c2d4e2", light: "#ffedd0", sunI: 1.6, moonI: 0, hemiI: 0.55, fogFar: 3200, exposure: 1.05 },
+  { h: 16.5, top: "#3573b8", horizon: "#c9d8e8", fog: "#c2d4e2", light: "#fff0d0", sunI: 1.5, moonI: 0, hemiI: 0.55, fogFar: 3000, exposure: 1.05 },
+  { h: 17.8, top: "#3a5a94", horizon: "#f0a868", fog: "#d99878", light: "#ffab66", sunI: 0.9, moonI: 0, hemiI: 0.5, fogFar: 2400, exposure: 1.08 },
+  { h: 18.8, top: "#1c2c52", horizon: "#c65f52", fog: "#8a5a5e", light: "#ff8a5a", sunI: 0.25, moonI: 0.12, hemiI: 0.35, fogFar: 1500, exposure: 1.0 },
+  { h: 20, top: "#060a18", horizon: "#101a30", fog: "#0d1526", light: "#9fb6ff", sunI: 0, moonI: 0.3, hemiI: 0.25, fogFar: 900, exposure: 0.92 },
+  { h: 24, top: "#060a18", horizon: "#0d1526", fog: "#0d1526", light: "#9fb6ff", sunI: 0, moonI: 0.3, hemiI: 0.22, fogFar: 800, exposure: 0.9 },
 ];
 
 function hexToRgb(hex: string): [number, number, number] {

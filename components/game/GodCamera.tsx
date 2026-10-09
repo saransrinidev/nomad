@@ -63,7 +63,8 @@ export default function GodCamera({
       if (!mesh) return;
       setNdc(e);
       raycaster.setFromCamera(ndc, camera);
-      const hit = raycaster.intersectObject(mesh, false)[0];
+      // Recursive: the terrain is a group of chunk meshes.
+      const hit = raycaster.intersectObject(mesh, true)[0];
       const ed = editorRef.current;
       if (hit) {
         ed.cursorX = THREE.MathUtils.clamp(hit.point.x, -WORLD_HALF, WORLD_HALF);

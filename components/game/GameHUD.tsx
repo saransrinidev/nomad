@@ -26,15 +26,16 @@ export default function GameHUD({
   lightsOn: boolean;
 }) {
   const riding = mode === "ride";
+  const onTrain = mode === "train";
   return (
     <div className="pointer-events-none absolute inset-0 z-10 select-none">
       {/* Top-left player badge */}
       <div className="absolute top-4 left-4 rounded-xl border border-white/15 bg-black/45 px-4 py-2.5 backdrop-blur-sm">
         <div className="text-[11px] font-medium tracking-[0.2em] text-white/60">
-          {riding ? "BIKE" : "PLAYER"}
+          {onTrain ? "TRAIN" : riding ? "BIKE" : "PLAYER"}
         </div>
         <div className="text-lg leading-tight font-bold text-white">
-          {riding ? `${speedKmh} km/h` : "On foot"}
+          {onTrain ? "Riding" : riding ? `${speedKmh} km/h` : "On foot"}
         </div>
         {!engineOn && (
           <div className="mt-1 text-[11px] font-bold tracking-widest text-red-400">
@@ -50,7 +51,10 @@ export default function GameHUD({
 
       {/* Bottom hint next to the minimap (full list is in the ESC menu) */}
       <div className="absolute bottom-4 left-56 rounded-xl border border-white/15 bg-black/45 px-4 py-2.5 text-[12px] text-white/80 backdrop-blur-sm">
-        E <span className="text-white/50">{riding ? "exit" : "ride"}</span>
+        E{" "}
+        <span className="text-white/50">
+          {onTrain ? "alight" : riding ? "exit" : "ride"}
+        </span>
         <span className="mx-2 text-white/25">|</span>
         ESC <span className="text-white/50">menu</span>
       </div>

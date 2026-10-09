@@ -9,6 +9,8 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { updateOnFoot } from "@/lib/game/playerController";
 import { bikeLeanAngle } from "@/lib/game/bikeController";
+import { berthAnchor, getLiveCars, seatAnchor } from "@/lib/game/map/railway";
+import { groundHeight } from "@/lib/game/map/terrain";
 import { playFootstep } from "@/lib/game/audio";
 import type { GameWorld } from "@/lib/game/state";
 
@@ -43,6 +45,62 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
     const rollTarget = world.mode === "ride" ? bikeLeanAngle(world) : 0;
     lean.current.rotation.z +=
       (rollTarget - lean.current.rotation.z) * Math.min(1, dt * 8);
+
+    if (world.mode === "train") {
+      // Riding inside a coach: root pinned to the seat/berth anchor, which
+      // tracks the moving consist every frame (Train ticks before Player).
+      const seat = world.trainSeat;
+      const cars = seat ? getLiveCars(seat.line) : [];
+      const car = seat ? cars[seat.car] : undefined;
+      if (seat && car) {
+        const gy = groundHeight(car.x, car.z);
+        const tr = world.trains.find((t) => t.line === seat.line);
+        const tdir = tr ? tr.dir : 1;
+        if (!seat.lying) {
+          const a = seatAnchor(seat.line, seat.car, seat.side, tdir);
+          if (a) {
+            root.current.position.set(a.x, gy + a.y - 0.72, a.z);
+            root.current.rotation.set(0, a.yaw, 0);
+            // Mirror into world state so the camera, maps, and prompts
+            // travel with the rider (Train ticks before Player).
+            world.playerPos.set(a.x, gy + a.y - 0.72, a.z);
+            world.playerYaw = a.yaw;
+          }
+          lean.current.rotation.x = 0;
+          // Seated: thighs forward, hands resting on lap.
+          leftLeg.current.rotation.x = -1.35;
+          rightLeg.current.rotation.x = -1.35;
+          leftLeg.current.rotation.z = -0.08;
+          rightLeg.current.rotation.z = 0.08;
+          leftArm.current.rotation.x = -0.35;
+          rightArm.current.rotation.x = -0.35;
+          leftElbow.current.rotation.x = -0.6;
+          rightElbow.current.rotation.x = -0.6;
+        } else {
+          const a = berthAnchor(seat.line, seat.car, tdir);
+          if (a) {
+            root.current.position.set(a.x, gy + a.y, a.z);
+            root.current.rotation.set(0, a.yaw, 0);
+            world.playerPos.set(a.x, gy + a.y, a.z);
+            world.playerYaw = a.yaw;
+          }
+          // Lying: whole body pitched flat, limbs relaxed straight.
+          lean.current.rotation.x = -Math.PI / 2 + 0.12;
+          leftLeg.current.rotation.x = -0.08;
+          rightLeg.current.rotation.x = -0.08;
+          leftLeg.current.rotation.z = 0;
+          rightLeg.current.rotation.z = 0;
+          leftArm.current.rotation.x = -0.15;
+          rightArm.current.rotation.x = -0.15;
+          leftElbow.current.rotation.x = -0.2;
+          rightElbow.current.rotation.x = -0.2;
+        }
+      }
+      world.playerSpeed = 0;
+      world.playerMoving = false;
+      world.playerVelY = 0;
+      return;
+    }
 
     if (world.mode === "walk") {
       updateOnFoot(world, dt);

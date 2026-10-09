@@ -8,7 +8,6 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { SCATTER_RANGE } from "@/lib/game/gameConstants";
 import { groundHeight } from "@/lib/game/map/terrain";
-import { waterAt } from "@/lib/game/map/water";
 import { getFocusPoint, type GameWorld } from "@/lib/game/state";
 
 interface ScatterItem {
@@ -77,15 +76,14 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
     const focus = getFocusPoint(world);
 
     // Toroidally wrap scatter around the player for endless variety.
-    // Trees/rocks sit on the designed terrain height; trees landing in
-    // water are hidden (scale 0) so shorelines stay clean.
+    // Trees/rocks sit on the designed terrain height.
     for (let i = 0; i < trees.length; i++) {
       const t = trees[i];
       const wx = wrapDelta(t.x, focus.x, SCATTER_RANGE);
       const wz = wrapDelta(t.z, focus.z, SCATTER_RANGE);
       dummy.position.set(wx, groundHeight(wx, wz), wz);
       dummy.rotation.set(0, t.rot, 0);
-      dummy.scale.setScalar(waterAt(wx, wz).inWater ? 0 : t.scale);
+      dummy.scale.setScalar(t.scale);
       dummy.updateMatrix();
       trunkRef.current.setMatrixAt(i, dummy.matrix);
       foliageRef.current.setMatrixAt(i, dummy.matrix);

@@ -197,7 +197,7 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
     (skyMat.uniforms.glowStrength.value as number) = 0.15 + glow * 0.65;
     if (scene.fog instanceof THREE.Fog) {
       scene.fog.color.set(sample.fog);
-      scene.fog.near = 60;
+      scene.fog.near = 250;
       scene.fog.far = sample.fogFar;
     }
     if (scene.background instanceof THREE.Color) scene.background.set(sample.fog);

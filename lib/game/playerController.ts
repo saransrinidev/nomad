@@ -9,9 +9,9 @@ import {
   RUN_SPEED,
   WALK_SPEED,
 } from "./gameConstants";
-import { BUILDING_DOORS, VILLAGE_COLLIDERS } from "./map/village";
+import { BUILDING_DOORS } from "./map/village";
+import { carryDelta, coachFloorAt, collideTrain, platformTopAt } from "./map/railway";
 import { groundHeight, WORLD_HALF } from "./map/terrain";
-import { waterAt } from "./map/water";
 import {
   ROOM_HALF_X,
   ROOM_HALF_Z,
@@ -53,17 +53,13 @@ function collideBox(
   return { x, z };
 }
 
-/** World collision: village hut footprints. Water is wadable. */
+/** World collision: plain land has no buildings, so no colliders. */
 export function collideWorld(
   x: number,
   z: number,
-  radius: number,
+  _radius: number,
 ): { x: number; z: number } {
-  let p = { x, z };
-  for (const c of VILLAGE_COLLIDERS) {
-    p = collideBox(p.x, p.z, radius, c.x, c.z, c.halfX, c.halfZ);
-  }
-  return p;
+  return { x, z };
 }
 
 /** Keep the player inside the interior room (local coords centered at origin). */
@@ -123,12 +119,7 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   const inside = world.interior !== null;
 
   const running = keys.run && inZ > 0;
-  let targetSpeed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
-  // Wading through shallow water drags movement down (outdoors only).
-  if (!inside) {
-    const wq = waterAt(world.playerPos.x, world.playerPos.z);
-    if (wq.inWater) targetSpeed *= Math.max(0.35, 1 - 0.55 * wq.depth);
-  }
+  const targetSpeed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
   world.playerSpeed = damp(world.playerSpeed, targetSpeed, PLAYER_ACCEL, step);
   world.playerMoving = world.playerSpeed > 0.25;
   world.playerRunning = running && world.playerMoving;
@@ -150,13 +141,29 @@ export function updateOnFoot(world: GameWorld, dt: number) {
     world.playerPos.x = room.x;
     world.playerPos.z = room.z;
   } else {
-    // Shoreline: the island ends at the map edge, ocean beyond.
+    // Ride along when standing inside a moving coach (applied before input
+    // so WASD stays relative to the car).
+    const carry = carryDelta(world.playerPos.x, world.playerPos.z);
+    world.playerPos.x += carry.dx;
+    world.playerPos.z += carry.dz;
+
+    // Shoreline: the island ends at the map edge.
     const B = WORLD_HALF;
     world.playerPos.x = Math.min(B, Math.max(-B, world.playerPos.x));
     world.playerPos.z = Math.min(B, Math.max(-B, world.playerPos.z));
 
+    // Ground: terrain, station platform tops, coach floors (incl. doorway
+    // bridge plates). Elevated surfaces only catch players above them.
+    let gy = groundHeight(world.playerPos.x, world.playerPos.z);
+    const pf = platformTopAt(world.playerPos.x, world.playerPos.z, world.playerPos.y);
+    if (pf !== null) gy = Math.max(gy, pf);
+    const cf = coachFloorAt(world.playerPos.x, world.playerPos.z);
+    if (cf !== null && world.playerPos.y > cf - 0.6) gy = Math.max(gy, cf);
+
+    // Jump (Space doubles as the bike brake, which is unused on foot).
+    if (keys.brake && world.playerVelY === 0) world.playerVelY = 7.5;
+
     // Designed-terrain ground (kept for future ramps/jumps).
-    const gy = groundHeight(world.playerPos.x, world.playerPos.z);
     world.playerVelY -= GRAVITY * step;
     world.playerPos.y += world.playerVelY * step;
     if (world.playerPos.y <= gy) {
@@ -167,6 +174,10 @@ export function updateOnFoot(world: GameWorld, dt: number) {
     const fixed = collideWorld(world.playerPos.x, world.playerPos.z, 0.5);
     world.playerPos.x = fixed.x;
     world.playerPos.z = fixed.z;
+    // Don't stand through the shuttle train.
+    const tf = collideTrain(world.playerPos.x, world.playerPos.z, 0.5);
+    world.playerPos.x = tf.x;
+    world.playerPos.z = tf.z;
   }
 
   // Walk-cycle phase for limb animation.

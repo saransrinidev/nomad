@@ -1,17 +1,39 @@
-// Designed-terrain store: bounded 8x8 km heightfield (384^2 verts, 1 tile =
-// 1 km). Single module singleton shared by the mesh, the editor, and the
-// physics samplers. Pure data + math (type-only Three.js for the mesh link).
+// Plain Tamil Nadu land: flat 16x16 km heightfield. Single module singleton
+// shared by the mesh, the editor, and the physics samplers. Pure data +
+// math (type-only Three.js for the mesh link).
 
 import type * as THREE from "three";
+import { isInsideTN, setTNWorldSize } from "./tamilnadu";
 
-export const WORLD_SIZE = 1000; // 1x1 km charted land
+export const WORLD_SIZE = 16000; // 16x16 km Tamil Nadu plain
 export const WORLD_HALF = WORLD_SIZE / 2;
 export const TILE_METERS = 1000;
-export const TILES_PER_SIDE = 1;
-export const TERRAIN_RES = 384; // verts per side (~2.6 m cells)
+export const TILES_PER_SIDE = 16;
+export const TERRAIN_RES = 769; // verts per side (768 cells, ~20.8 m cells)
 export const CELL = WORLD_SIZE / (TERRAIN_RES - 1);
-export const TERRAIN_MIN_H = -8;
-export const TERRAIN_MAX_H = 60;
+export const TERRAIN_MIN_H = -12;
+export const TERRAIN_MAX_H = 20;
+
+// Render chunks: the heightfield data stays one global grid, but the mesh
+// is split into CHUNKS_PER_SIDE² tiles so frustum culling + rebuilds work
+// per chunk. 768 cells / 4 = 192 cells per chunk = exactly 4000 m.
+export const CHUNKS_PER_SIDE = 4;
+export const CHUNK_CELLS = (TERRAIN_RES - 1) / CHUNKS_PER_SIDE;
+export const CHUNK_RES = CHUNK_CELLS + 1; // verts per chunk side (193)
+export const CHUNK_SIZE = WORLD_SIZE / CHUNKS_PER_SIDE; // 4000 m
+
+/** World-space origin (min corner) of chunk (cx, cz). */
+export function chunkOrigin(cx: number, cz: number): { x: number; z: number } {
+  return {
+    x: -WORLD_HALF + cx * CHUNK_SIZE,
+    z: -WORLD_HALF + cz * CHUNK_SIZE,
+  };
+}
+
+/** Flat heights: land plate vs seabed. */
+export const TN_LAND_H = 2.0;
+export const TN_SEA_H = -5.0;
+export const TN_BEACH_H = 0.4;
 
 /** Paint layers: grass, dirt, sand, rock, asphalt. */
 export type PaintLayer = 0 | 1 | 2 | 3 | 4;
@@ -26,10 +48,48 @@ let terrain: TerrainData | null = null;
 let terrainVersion = 0;
 
 export function createTerrain(): TerrainData {
-  return {
-    heights: new Float32Array(TERRAIN_RES * TERRAIN_RES),
-    paint: new Uint8Array(TERRAIN_RES * TERRAIN_RES), // all grass
-  };
+  setTNWorldSize(WORLD_SIZE);
+  const heights = new Float32Array(TERRAIN_RES * TERRAIN_RES);
+  const paint = new Uint8Array(TERRAIN_RES * TERRAIN_RES);
+  // First pass: inside/outside mask.
+  const inside = new Uint8Array(TERRAIN_RES * TERRAIN_RES);
+  for (let iz = 0; iz < TERRAIN_RES; iz++) {
+    for (let ix = 0; ix < TERRAIN_RES; ix++) {
+      const wx = ix * CELL - WORLD_HALF;
+      const wz = iz * CELL - WORLD_HALF;
+      const idx = iz * TERRAIN_RES + ix;
+      const inn = isInsideTN(wx, wz) ? 1 : 0;
+      inside[idx] = inn;
+      heights[idx] = inn ? TN_LAND_H : TN_SEA_H;
+      paint[idx] = inn ? 0 : 2;
+    }
+  }
+  // Second pass: feather the shoreline by one cell so bikes don't hit a
+  // cliff wall at the TN border. Mixed-neighbourhood cells become beach.
+  for (let iz = 0; iz < TERRAIN_RES; iz++) {
+    for (let ix = 0; ix < TERRAIN_RES; ix++) {
+      const idx = iz * TERRAIN_RES + ix;
+      const inn = inside[idx] === 1;
+      let mixed = false;
+      for (let oz = -1; oz <= 1 && !mixed; oz++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          if (ox === 0 && oz === 0) continue;
+          const jx = ix + ox;
+          const jz = iz + oz;
+          if (jx < 0 || jz < 0 || jx >= TERRAIN_RES || jz >= TERRAIN_RES) continue;
+          if ((inside[jz * TERRAIN_RES + jx] === 1) !== inn) {
+            mixed = true;
+            break;
+          }
+        }
+      }
+      if (mixed) {
+        heights[idx] = TN_BEACH_H;
+        paint[idx] = 2;
+      }
+    }
+  }
+  return { heights, paint };
 }
 
 export function getTerrain(): TerrainData {
@@ -62,10 +122,10 @@ export function worldToGrid(x: number, z: number): [number, number] {
   return [ix, iz];
 }
 
-/** Bilinear ground height in meters. Outside the island: seabed (-1.2). */
+/** Bilinear ground height in meters. Outside the map: seabed. */
 export function groundHeight(x: number, z: number): number {
   if (x < -WORLD_HALF || x > WORLD_HALF || z < -WORLD_HALF || z > WORLD_HALF) {
-    return -1.2;
+    return TN_SEA_H;
   }
   const t = getTerrain();
   const gx = (x + WORLD_HALF) / CELL;

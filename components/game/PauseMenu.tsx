@@ -98,7 +98,8 @@ export default function PauseMenu({
                 GENERAL
               </div>
               <Row keys={["ESC", "P"]} label="Pause menu" />
-              <Row keys={["M"]} label="Sound on / off" />
+              <Row keys={["M"]} label="Open / close map" />
+              <Row keys={["N"]} label="Sound on / off" />
               <div className="pt-1 text-[11px] font-bold tracking-widest text-white/50">
                 MINIMAP
               </div>

@@ -176,21 +176,27 @@ export default function ThirdPersonCamera({
     if (world.mode !== lastModeRef.current) {
       lastModeRef.current = world.mode;
       worldRef.current.camManualZoom = false;
+      if (world.mode === "train") worldRef.current.camDistance = 2.4;
     }
+    const isTrain = world.mode === "train";
     const dist = world.interior !== null
       ? 4.2 // tight framing so the camera stays inside the room
-      : worldRef.current.camManualZoom
-        ? world.camDistance
-        : world.mode === "ride"
-          ? CAM_RIDE_DISTANCE
-          : CAM_DISTANCE;
-    if (world.interior === null) worldRef.current.camDistance = dist;
+      : isTrain
+        ? Math.min(Math.max(world.camDistance, 1.2), 3.0) // stay inside the coach
+        : worldRef.current.camManualZoom
+          ? world.camDistance
+          : world.mode === "ride"
+            ? CAM_RIDE_DISTANCE
+            : CAM_DISTANCE;
+    if (world.interior === null && !isTrain) worldRef.current.camDistance = dist;
 
     const cp = Math.cos(world.camPitch);
     const sp = Math.sin(world.camPitch);
+    const lookH = isTrain ? 1.05 : CAM_HEIGHT;
+    const camH = isTrain ? 0.55 : CAM_HEIGHT;
     desired.set(
       focus.x - Math.sin(world.camYaw) * cp * dist,
-      focus.y + CAM_HEIGHT + sp * dist,
+      focus.y + camH + sp * dist,
       focus.z - Math.cos(world.camYaw) * cp * dist,
     );
     // Never clip below the terrain.
@@ -198,7 +204,7 @@ export default function ThirdPersonCamera({
 
     // Rigid follow: snap straight to the desired position.
     camera.position.copy(desired);
-    lookAt.set(focus.x, focus.y + CAM_HEIGHT, focus.z);
+    lookAt.set(focus.x, focus.y + lookH, focus.z);
     camera.lookAt(lookAt);
 
     // FOV follows speed directly, no lag.

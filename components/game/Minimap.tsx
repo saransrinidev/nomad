@@ -6,10 +6,12 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { renderMap, type MapSnapshot } from "@/lib/game/map/mapRender";
+import { getMapDivisions } from "@/lib/game/map/districts";
+import { getRailwayMapData } from "@/lib/game/map/railway";
 import type { GameWorld } from "@/lib/game/state";
 
 const SIZE = 200;
-const ZOOM_LEVELS = [60, 120, 240]; // visible radius in meters
+const ZOOM_LEVELS = [300, 800, 1800]; // visible radius in meters (16km map)
 
 function snapshot(w: GameWorld): MapSnapshot {
   const riding = w.mode === "ride";
@@ -18,6 +20,8 @@ function snapshot(w: GameWorld): MapSnapshot {
   return {
     focusX: focus.x,
     focusZ: focus.z,
+    px: w.playerPos.x,
+    pz: w.playerPos.z,
     yaw,
     riding,
     bikeX: w.bikePos.x,
@@ -29,11 +33,13 @@ function snapshot(w: GameWorld): MapSnapshot {
 export default function Minimap({
   worldRef,
   northUp,
+  district,
   onToggleOrientation,
   onOpenMap,
 }: {
   worldRef: RefObject<GameWorld>;
   northUp: boolean;
+  district: string | null;
   onToggleOrientation: () => void;
   onOpenMap: () => void;
 }) {
@@ -59,7 +65,19 @@ export default function Minimap({
       if (now - last < 100) return;
       last = now;
       const w = worldRef.current;
-      renderMap(ctx, SIZE, RANGE, { ...snapshot(w), northUp });
+      const div = getMapDivisions();
+      renderMap(
+        ctx,
+        SIZE,
+        RANGE,
+        { ...snapshot(w), northUp },
+        {
+          districtRings: div.rings,
+          districtLabels: div.labels,
+          labelFont: "600 9px sans-serif",
+          railway: getRailwayMapData(),
+        },
+      );
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
@@ -75,6 +93,10 @@ export default function Minimap({
           onClick={onOpenMap}
           title="Open fullscreen map"
         />
+        {/* Current district label */}
+        <div className="pointer-events-none absolute top-2 left-2 max-w-[130px] truncate rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold text-[#3c4043] shadow-md">
+          {district ?? "Ocean"}
+        </div>
         {/* Compass: tap to return to north-up */}
         <button
           onClick={onToggleOrientation}

@@ -2,7 +2,7 @@
 // Pure data — no React, no Three.js. Safe to import anywhere,
 // including a future multiplayer server.
 
-export type RideMode = "walk" | "ride";
+export type RideMode = "walk" | "ride" | "train";
 
 export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
 export const BIKE_SPAWN: [number, number, number] = [3.5, 0, 2.5];
@@ -43,11 +43,11 @@ export const CAM_MAX_PITCH = 1.55;
 export const CAM_MIN_DISTANCE = 3.5;
 export const CAM_MAX_DISTANCE = 14;
 
-// --- World presentation ---
+// --- World presentation (16x16 km Tamil Nadu plain) ---
 export const FOG_COLOR = "#bfe3f2";
-export const FOG_NEAR = 60;
-export const FOG_FAR = 260;
-export const SKY_SUN_POSITION: [number, number, number] = [60, 45, -80];
+export const FOG_NEAR = 300;
+export const FOG_FAR = 3600;
+export const SKY_SUN_POSITION: [number, number, number] = [240, 180, -320];
 export const GROUND_SIZE = 600;
 export const GROUND_TILE_WORLD = 8; // world units per repeating texture tile
-export const SCATTER_RANGE = 260; // toroidal wrap radius for trees/rocks
+export const SCATTER_RANGE = 1200; // (unused while scatter is stripped)
