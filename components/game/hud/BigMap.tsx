@@ -76,11 +76,10 @@ export default function BigMap({
     ctx.scale(dpr, dpr);
 
     let raf = 0;
-    let last = 0;
-    const draw = (now: number) => {
+    // Real-time: redraw every animation frame so trains + orange player
+    // arrow stay live even while the fullscreen map is open.
+    const draw = () => {
       raf = requestAnimationFrame(draw);
-      if (now - last < 200) return;
-      last = now;
       const w = worldRef.current;
       const riding = w.mode === "ride";
       const focus = riding ? w.bikePos : w.playerPos;
@@ -100,8 +99,8 @@ export default function BigMap({
         {
           focusX: cx,
           focusZ: cz,
-          px: w.playerPos.x,
-          pz: w.playerPos.z,
+          px: focus.x,
+          pz: focus.z,
           yaw,
           riding,
           bikeX: w.bikePos.x,
@@ -261,8 +260,9 @@ export default function BigMap({
           </button>
         </div>
         <div className="bg-white px-4 py-2 text-[11px] text-[#5f6368]">
-          Drag to explore &middot; scroll to zoom &middot; blue dot is you
-          &middot; orange fill is Thanjavur &middot; M / ESC to close
+          Drag to explore &middot; scroll to zoom &middot; orange arrow is you
+          (live) &middot; red dot is the train (live) &middot; orange fill is
+          Thanjavur &middot; M / ESC to close
         </div>
       </div>
     </div>

@@ -16,6 +16,7 @@ import BikePrompt from "./prompts/BikePrompt";
 import Speedometer from "./hud/Speedometer";
 import Minimap from "./hud/Minimap";
 import BigMap from "./hud/BigMap";
+import SpawnMenu from "./menus/SpawnMenu";
 import DistrictToast from "./hud/DistrictToast";
 import PauseMenu from "./menus/PauseMenu";
 import SkidMarks from "./scene/SkidMarks";
@@ -38,10 +39,12 @@ import {
   FOG_NEAR,
   INTERACT_DISTANCE,
   PLAYER_SPAWN,
+  SPAWN_POINTS,
   type RideMode,
 } from "@/lib/game/gameConstants";
-import { createInitialWorld, type GameWorld } from "@/lib/game/state";
+import { createInitialWorld, type GameWorld, type KeyState } from "@/lib/game/state";
 import { formatTime, nightFactor } from "@/lib/game/map/time";
+import { latLonToGame } from "@/lib/game/map/tamilnadu";
 import { buildTerrainAsync, groundHeight } from "@/lib/game/map/terrain";
 import {
   getQuality,
@@ -51,7 +54,7 @@ import {
   type QualityMode,
 } from "@/lib/game/quality";
 import { useCurrentDistrict } from "@/lib/game/map/districts";
-import { seatProximity } from "@/lib/game/map/railway";
+import { clearGroundSpot, seatProximity } from "@/lib/game/map/railway";
 
 /**
  * Runs inside the Canvas: proximity checks + low-frequency HUD sync.
@@ -143,6 +146,13 @@ export default function Game() {
   const [mapNorthUp, setMapNorthUp] = useState(true);
   const [mapOpen, setMapOpen] = useState(false);
   const mapOpenRef = useRef(false);
+  // Testing-mode spawn picker (TAB): same pause/restore treatment as the map.
+  const [spawnOpen, setSpawnOpen] = useState(false);
+  const spawnOpenRef = useRef(false);
+  // Snapshot of held keys + pointer-lock (CTRL look) taken when the map
+  // opens, restored when it closes.
+  const savedKeysRef = useRef<KeyState | null>(null);
+  const wasLockedRef = useRef(false);
   // Renderer quality: a WebGL creation failure steps full → minimal (most
   // compatible context flags) → help screen, instead of crashing the page.
   const [glMode, setGlMode] = useState<"full" | "minimal" | "failed">("full");
@@ -231,36 +241,146 @@ export default function Game() {
     setMutedUi(m);
   }, []);
 
-  // Fullscreen map: freeze the sim and swallow all keys while open.
+  // Fullscreen map: freeze the sim, remember held keys + CTRL
+  // pointer-lock, and hand the cursor back (exit lock) so the map is
+  // clickable. closeMap restores everything.
   const openMap = useCallback(() => {
     const w = worldRef.current;
+    if (!w || mapOpenRef.current) return;
+    savedKeysRef.current = { ...w.keys };
     w.keys.forward = false;
     w.keys.back = false;
     w.keys.left = false;
     w.keys.right = false;
     w.keys.run = false;
     w.keys.brake = false;
+    wasLockedRef.current = document.pointerLockElement != null;
+    if (document.pointerLockElement) document.exitPointerLock();
     w.paused = true;
+    w.mapOpen = true;
     pausedRef.current = true;
     mapOpenRef.current = true;
     setMapOpen(true);
   }, []);
 
   const closeMap = useCallback(() => {
+    if (!mapOpenRef.current) return;
     mapOpenRef.current = false;
     setMapOpen(false);
+    const w = worldRef.current;
+    if (w) {
+      if (savedKeysRef.current) {
+        w.keys.forward = savedKeysRef.current.forward;
+        w.keys.back = savedKeysRef.current.back;
+        w.keys.left = savedKeysRef.current.left;
+        w.keys.right = savedKeysRef.current.right;
+        w.keys.run = savedKeysRef.current.run;
+        w.keys.brake = savedKeysRef.current.brake;
+        savedKeysRef.current = null;
+      }
+      w.mapOpen = false;
+      w.paused = false;
+    }
     pausedRef.current = false;
-    worldRef.current.paused = false;
+    if (wasLockedRef.current) {
+      wasLockedRef.current = false;
+      // Handled in ThirdPersonCamera (it owns the canvas element).
+      // Dispatched synchronously inside this user gesture (M / ESC / click)
+      // so requestPointerLock still has transient activation.
+      window.dispatchEvent(new Event("nomad:relock"));
+    }
   }, []);
+
+  // Testing-mode spawn picker: freeze the sim + free the cursor exactly
+  // like the map so the button list is clickable, then restore on close.
+  const openSpawn = useCallback(() => {
+    const w = worldRef.current;
+    if (!w || spawnOpenRef.current) return;
+    savedKeysRef.current = { ...w.keys };
+    w.keys.forward = false;
+    w.keys.back = false;
+    w.keys.left = false;
+    w.keys.right = false;
+    w.keys.run = false;
+    w.keys.brake = false;
+    wasLockedRef.current = document.pointerLockElement != null;
+    if (document.pointerLockElement) document.exitPointerLock();
+    w.paused = true;
+    w.spawnOpen = true;
+    pausedRef.current = true;
+    spawnOpenRef.current = true;
+    setSpawnOpen(true);
+  }, []);
+
+  const closeSpawn = useCallback(() => {
+    if (!spawnOpenRef.current) return;
+    spawnOpenRef.current = false;
+    setSpawnOpen(false);
+    const w = worldRef.current;
+    if (w) {
+      if (savedKeysRef.current) {
+        w.keys.forward = savedKeysRef.current.forward;
+        w.keys.back = savedKeysRef.current.back;
+        w.keys.left = savedKeysRef.current.left;
+        w.keys.right = savedKeysRef.current.right;
+        w.keys.run = savedKeysRef.current.run;
+        w.keys.brake = savedKeysRef.current.brake;
+        savedKeysRef.current = null;
+      }
+      w.spawnOpen = false;
+      w.paused = false;
+    }
+    pausedRef.current = false;
+    if (wasLockedRef.current) {
+      wasLockedRef.current = false;
+      window.dispatchEvent(new Event("nomad:relock"));
+    }
+  }, []);
+
+  // Teleport the player + bike together to a spawn point (always on foot,
+  // on open district land clear of every rail), then close the picker.
+  const handleSpawnPoint = useCallback(
+    (index: number) => {
+      const p = SPAWN_POINTS[index];
+      const w = worldRef.current;
+      if (!p || !w) return;
+      const g = latLonToGame(p.lon, p.lat);
+      const clearP = clearGroundSpot(g.x + 20, g.z);
+      w.playerPos.set(clearP.x, 0, clearP.z);
+      w.playerPos.y = groundHeight(w.playerPos.x, w.playerPos.z);
+      w.playerYaw = 0;
+      w.playerVelY = 0;
+      w.playerSpeed = 0;
+      w.playerMoving = false;
+      w.crashFlying = false;
+      w.stun = 0;
+      const clearB = clearGroundSpot(g.x + 23.5, g.z + 2.5, 20);
+      w.bikePos.set(clearB.x, 0, clearB.z);
+      w.bikePos.y = groundHeight(w.bikePos.x, w.bikePos.z);
+      w.bikeYaw = BIKE_SPAWN_YAW;
+      w.bikeSpeed = 0;
+      w.bikeSteer = 0;
+      w.bikeVel.set(0, 0, 0);
+      w.bikeDrift = false;
+      w.trainSeat = null;
+      modeRef.current = "walk";
+      w.mode = "walk";
+      setMode("walk");
+      closeSpawn();
+    },
+    [closeSpawn],
+  );
 
   const handleRespawn = useCallback(() => {
     const w = worldRef.current;
-    w.playerPos.set(...PLAYER_SPAWN);
+    const clearP = clearGroundSpot(PLAYER_SPAWN[0], PLAYER_SPAWN[2]);
+    w.playerPos.set(clearP.x, 0, clearP.z);
     w.playerPos.y = groundHeight(w.playerPos.x, w.playerPos.z);
     w.playerYaw = 0;
     w.playerVelY = 0;
     w.playerSpeed = 0;
-    w.bikePos.set(...BIKE_SPAWN);
+    const clearB = clearGroundSpot(BIKE_SPAWN[0], BIKE_SPAWN[2], 20);
+    w.bikePos.set(clearB.x, 0, clearB.z);
     w.bikePos.y = groundHeight(w.bikePos.x, w.bikePos.z);
     w.bikeYaw = BIKE_SPAWN_YAW;
     w.bikeSpeed = 0;
@@ -280,12 +400,23 @@ export default function Game() {
     setPausedUi(false);
   }, []);
 
-  // E = mount / dismount, X = engine, L = lights, M = map, N = mute,
-  // ESC/P = pause. (ESC while pointer-locked is consumed by the browser to
-  // exit the lock, so P also toggles the menu.)
+  // E = mount / dismount, X = engine, L = lights, M = map, TAB = spawn
+  // picker, N = mute, ESC/P = pause. (ESC while pointer-locked is consumed
+  // by the browser to exit the lock, so P also toggles the menu.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!worldRef.current) return;
+      if (e.code === "Tab" && !e.repeat) {
+        // Testing-mode spawn picker — works on foot and while riding.
+        e.preventDefault();
+        if (spawnOpenRef.current) {
+          closeSpawn();
+          return;
+        }
+        if (pausedRef.current || mapOpenRef.current) return;
+        openSpawn();
+        return;
+      }
       if (e.code === "KeyM" && !e.repeat) {
         // Toggle the fullscreen map — works on foot and while riding.
         // (openMap pauses the sim and clears inputs itself.)
@@ -310,6 +441,10 @@ export default function Game() {
       if ((e.code === "Escape" || e.code === "KeyP") && !e.repeat) {
         if (mapOpenRef.current) {
           closeMap();
+          return;
+        }
+        if (spawnOpenRef.current) {
+          closeSpawn();
           return;
         }
         if (e.code === "KeyP" && document.pointerLockElement) {
@@ -386,7 +521,7 @@ export default function Game() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleMute, setPaused, openMap, closeMap]);
+  }, [toggleMute, setPaused, openMap, closeMap, openSpawn, closeSpawn]);
 
   const lowQ = quality.level === "low";
 
@@ -437,7 +572,7 @@ export default function Game() {
             <Motorcycle worldRef={worldRef} />
             <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} engineOn={engineUi} />
             <SkidMarks worldRef={worldRef} />
-            <Railway />
+            <Railway worldRef={worldRef} />
             <Train worldRef={worldRef} />
             <TrainPrompt worldRef={worldRef} />
           </>
@@ -484,18 +619,17 @@ export default function Game() {
                 onClose={closeMap}
               />
             )}
+            {spawnOpen && (
+              <SpawnMenu onSpawn={handleSpawnPoint} onClose={closeSpawn} />
+            )}
             <GeoReadout worldRef={worldRef} />
             <DistrictToast district={district} />
           </>
         </>
       )}
 
-      {/* Center crosshair while the cursor is captured in mouse-look */}
-      {camLocked && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center select-none">
-          <div className="h-1.5 w-1.5 rounded-full bg-white/90 shadow-[0_0_6px_rgba(0,0,0,0.8)]" />
-        </div>
-      )}
+      {/* Center crosshair removed: no white dot in mouse-look (CTRL).
+      The top-center badge still shows when mouse-look is active. */}
       {pausedUi && (
         <PauseMenu
           onResume={() => setPaused(false)}

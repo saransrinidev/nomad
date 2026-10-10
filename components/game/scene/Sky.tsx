@@ -299,6 +299,12 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
     );
     sunRef.current.color.set(sample.light);
     sunRef.current.intensity = sample.sunI;
+    // Shadows must never "stop": day uses the sun caster, night uses the
+    // moon caster (previously the moon cast no shadow, so all 3D shadows
+    // vanished at night). Toggle so only the active key light pays the
+    // shadow-map cost.
+    sunRef.current.castShadow = sample.sunI > 0.05;
+    moonRef.current.castShadow = sample.moonI > 0.05;
     scratchTarget.position.set(focus.x, 0, focus.z);
     scratchTarget.updateMatrixWorld();
     moonRef.current.position.set(
@@ -395,7 +401,23 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
         shadow-normalBias={0.05}
         target={scratchTarget}
       />
-      <directionalLight ref={moonRef} intensity={0} color="#a8c0ff" target={scratchTarget} />
+      <directionalLight
+        ref={moonRef}
+        intensity={0}
+        color="#a8c0ff"
+        target={scratchTarget}
+        castShadow
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-camera-left={-45}
+        shadow-camera-right={45}
+        shadow-camera-top={45}
+        shadow-camera-bottom={-45}
+        shadow-camera-near={1}
+        shadow-camera-far={400}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.05}
+      />
       <primitive object={scratchTarget} />
       {cloudTexs &&
         clouds.map((c, i) => (

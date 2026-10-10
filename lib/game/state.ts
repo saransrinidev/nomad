@@ -15,7 +15,7 @@ import {
 } from "./gameConstants";
 import { START_TIME } from "./map/time";
 import { groundHeight } from "./map/terrain";
-import { initialTrainState, type TrainSimState } from "./map/railway";
+import { initialTrainState, clearGroundSpot, type TrainSimState } from "./map/railway";
 
 export interface KeyState {
   forward: boolean;
@@ -42,6 +42,11 @@ export interface GameWorld {
   keys: KeyState;
   /** Freeze all simulation (ESC menu). Rendering continues. */
   paused: boolean;
+  /** Fullscreen map open: inputs are swallowed so the pre-map held keys
+   * can be restored on close (see Game.tsx openMap/closeMap). */
+  mapOpen: boolean;
+  /** Testing-mode spawn picker open (TAB): same input-freeze treatment. */
+  spawnOpen: boolean;
 
   // Player (on-foot) state
   playerPos: THREE.Vector3;
@@ -99,13 +104,21 @@ export function createInitialWorld(): GameWorld {
   // raw [x, 0, z] spawn constants would bury the bike under the ground
   // (the parked bike never runs the ride controller that grounds it).
   const playerPos = new THREE.Vector3(...PLAYER_SPAWN);
+  // Boot onto open district land (never station premises): nudge clear of
+  // every rail before grounding.
+  const clearP = clearGroundSpot(playerPos.x, playerPos.z);
+  playerPos.set(clearP.x, 0, clearP.z);
   playerPos.y = groundHeight(playerPos.x, playerPos.z);
   const bikePos = new THREE.Vector3(...BIKE_SPAWN);
+  const clearB = clearGroundSpot(bikePos.x, bikePos.z, 20);
+  bikePos.set(clearB.x, 0, clearB.z);
   bikePos.y = groundHeight(bikePos.x, bikePos.z);
   return {
     mode: "walk",
     keys: createEmptyKeys(),
     paused: false,
+    mapOpen: false,
+    spawnOpen: false,
 
     playerPos,
     playerYaw: 0,

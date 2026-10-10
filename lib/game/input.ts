@@ -23,8 +23,16 @@ export function useKeyboardInput(worldRef: RefObject<GameWorld>) {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (!worldRef.current) return;
-      const keys = worldRef.current.keys;
+      const world = worldRef.current;
+      const keys = world.keys;
       const dir = CODE_MAP[e.code];
+      // While the fullscreen map / spawn picker is open the pre-menu held
+      // keys are frozen for restore on close — ignore live presses (but
+      // still swallow scrolling keys so the page never moves under the menu).
+      if (world.mapOpen || world.spawnOpen) {
+        if (dir || e.code === "Space") e.preventDefault();
+        return;
+      }
       if (dir) {
         keys[dir] = true;
         e.preventDefault();
@@ -41,7 +49,11 @@ export function useKeyboardInput(worldRef: RefObject<GameWorld>) {
     };
     const up = (e: KeyboardEvent) => {
       if (!worldRef.current) return;
-      const keys = worldRef.current.keys;
+      const world = worldRef.current;
+      // Releases while a menu is open are ignored too — the snapshot
+      // taken on open is restored verbatim on close.
+      if (world.mapOpen || world.spawnOpen) return;
+      const keys = world.keys;
       const dir = CODE_MAP[e.code];
       if (dir) {
         keys[dir] = false;

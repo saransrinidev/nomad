@@ -77,9 +77,17 @@ export default function ThirdPersonCamera({
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
       if (e.code === "ControlLeft" || e.code === "ControlRight") {
+        // No toggling while the fullscreen map (or pause) owns the cursor.
+        if (worldRef.current?.mapOpen || worldRef.current?.paused) return;
         if (document.pointerLockElement === el) document.exitPointerLock();
         else lock();
       }
+    };
+
+    // Fired by Game.tsx closeMap to restore the pre-map CTRL look state.
+    const onRelock = () => {
+      if (worldRef.current?.mapOpen || worldRef.current?.paused) return;
+      if (document.pointerLockElement !== el) lock();
     };
 
     const onPointerLockChange = () => {
@@ -145,6 +153,7 @@ export default function ThirdPersonCamera({
     };
 
     window.addEventListener("keydown", onKey);
+    window.addEventListener("nomad:relock", onRelock);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     document.addEventListener("mousemove", onMouseMove);
     el.addEventListener("pointerdown", onDown);
@@ -155,6 +164,7 @@ export default function ThirdPersonCamera({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("nomad:relock", onRelock);
       document.removeEventListener("pointerlockchange", onPointerLockChange);
       document.removeEventListener("mousemove", onMouseMove);
       el.removeEventListener("pointerdown", onDown);

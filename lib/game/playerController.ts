@@ -14,7 +14,7 @@ import {
   RUN_SPEED,
   WALK_SPEED,
 } from "./gameConstants";
-import { carryDelta, coachFloorAt, collideStation, collideTrain, platformTopAt, stairTopAt } from "./map/railway";
+import { carryDelta, coachCapAt, coachFloorAt, collideBuildings, collideStation, collideTrain, platformTopAt, stairTopAt } from "./map/railway";
 import { groundHeight, WORLD_HALF } from "./map/terrain";
 import type { GameWorld } from "./state";
 
@@ -161,6 +161,13 @@ export function updateOnFoot(world: GameWorld, dt: number) {
     world.playerPos.y = gy;
     world.playerVelY = 0;
   }
+  // Coach roof: cap the jump inside a coach so riders can hop but never
+  // pop out through the roof (cabin headroom is ~2 m, a full jump is ~1.3 m).
+  const cap = coachCapAt(world.playerPos.x, world.playerPos.z);
+  if (cap !== null && world.playerPos.y > cap) {
+    world.playerPos.y = cap;
+    if (world.playerVelY > 0) world.playerVelY = 0;
+  }
 
   const fixed = collideWorld(world.playerPos.x, world.playerPos.z);
   world.playerPos.x = fixed.x;
@@ -173,6 +180,10 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   const sc = collideStation(world.playerPos.x, world.playerPos.z, 0.5, world.playerPos.y);
   world.playerPos.x = sc.x;
   world.playerPos.z = sc.z;
+  // Station buildings (concourse halls) are solid too.
+  const bc = collideBuildings(world.playerPos.x, world.playerPos.z, 0.5, world.playerPos.y);
+  world.playerPos.x = bc.x;
+  world.playerPos.z = bc.z;
 
   // Walk-cycle phase for limb animation.
   if (world.playerMoving) {

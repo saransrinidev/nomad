@@ -1,8 +1,8 @@
 // Plain Tamil Nadu land mesh: 16x16 km heightfield split into 4x4 render
 // chunks (one mesh each, frustum-culled) over a single global data grid.
 // Rebuilt from the store whenever the version bumps. Vertex colors carry
-// the paint layers (grass land, sand sea/beach) under the repeating detail
-// texture.
+// the paint layers as a tint over the repeating grass texture from
+// public/texture.
 
 "use client";
 
@@ -20,12 +20,15 @@ import {
   PAINT_COLORS,
   registerTerrainMesh,
   TERRAIN_RES,
-  WORLD_SIZE,
   worldToGrid,
 } from "@/lib/game/map/terrain";
 
 const SKIRT_Y = -8.6;
 const CHUNK_COUNT = CHUNKS_PER_SIDE * CHUNKS_PER_SIDE;
+// Texture tile size in meters. Each chunk spans UV 0..1, so the repeat is
+// derived from the chunk size (4000 m / 8 m = 500 tiles per chunk).
+const GRASS_TILE_METERS = 8;
+const GRASS_REPEAT = CHUNK_SIZE / GRASS_TILE_METERS;
 
 function buildColors(): THREE.BufferAttribute {
   const colors = new Float32Array(CHUNK_RES * CHUNK_RES * 3);
@@ -34,40 +37,30 @@ function buildColors(): THREE.BufferAttribute {
   return attr;
 }
 
-function makeGrassDetailTexture(): THREE.CanvasTexture | null {
-  if (typeof document === "undefined") return null;
-  let s = 99;
-  const rand = () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-  const size = 128;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = "#e8e8e8";
-  ctx.fillRect(0, 0, size / 2, size / 2);
-  ctx.fillRect(size / 2, size / 2, size / 2, size / 2);
-  for (let i = 0; i < 200; i++) {
-    ctx.fillStyle = rand() > 0.5 ? "#f2f2f2" : "#dedede";
-    ctx.fillRect(rand() * size, rand() * size, 2, 2);
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(WORLD_SIZE / 8, WORLD_SIZE / 8);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
-
 /** Chunk (cx, cz) mesh origin = chunk center in game meters. */
 function chunkCenter(cx: number, cz: number): [number, number] {
   const o = chunkOrigin(cx, cz);
   return [o.x + CHUNK_SIZE / 2, o.z + CHUNK_SIZE / 2];
+}
+
+/** Real grass albedo + normal from public/texture (shared by all chunks). */
+function useGrassTextures() {
+  return useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const loader = new THREE.TextureLoader();
+    const map = loader.load("/texture/ph_grass_path_2/ph_grass_path_2_baseColor.webp");
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.repeat.set(GRASS_REPEAT, GRASS_REPEAT);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.anisotropy = 8;
+    const normalMap = loader.load("/texture/ph_grass_path_2/ph_grass_path_2_normal.webp");
+    normalMap.wrapS = THREE.RepeatWrapping;
+    normalMap.wrapT = THREE.RepeatWrapping;
+    normalMap.repeat.set(GRASS_REPEAT, GRASS_REPEAT);
+    normalMap.anisotropy = 8;
+    return { map, normalMap };
+  }, []);
 }
 
 export default function Terrain() {
@@ -90,7 +83,7 @@ export default function Terrain() {
   const geosRef = useRef<THREE.BufferGeometry[] | null>(null);
   if (geosRef.current === null) geosRef.current = chunkGeos;
 
-  const grass = useMemo(() => makeGrassDetailTexture(), []);
+  const grass = useGrassTextures();
 
   useEffect(() => {
     registerTerrainMesh(groupRef.current);
@@ -120,12 +113,7 @@ export default function Terrain() {
         const gi = gz * TERRAIN_RES + gx;
         pos.setY(j, t.heights[gi]);
         tmp.set(PAINT_COLORS[t.paint[gi]] ?? PAINT_COLORS[0]);
-        // Local plane x index for the anti-banding checker. Attribute order
-        // still runs +x fastest after rotateX, so j % CHUNK_RES is the
-        // column and Math.floor(j / CHUNK_RES) the row.
-        const shade =
-          ((j % CHUNK_RES) + Math.floor(j / CHUNK_RES)) % 2 === 0 ? 1 : 0.96;
-        col.setXYZ(j, tmp.r * shade, tmp.g * shade, tmp.b * shade);
+        col.setXYZ(j, tmp.r, tmp.g, tmp.b);
       }
       pos.needsUpdate = true;
       col.needsUpdate = true;
@@ -133,10 +121,6 @@ export default function Terrain() {
       g.computeBoundingSphere();
     }
   });
-
-  const matProps = grass
-    ? { map: grass, vertexColors: true as const, roughness: 1, metalness: 0 }
-    : { vertexColors: true as const, roughness: 1, metalness: 0 };
 
   return (
     <group>
@@ -153,7 +137,13 @@ export default function Terrain() {
               receiveShadow
               frustumCulled
             >
-              <meshStandardMaterial {...matProps} />
+              <meshStandardMaterial
+                map={grass?.map}
+                normalMap={grass?.normalMap}
+                vertexColors
+                roughness={1}
+                metalness={0}
+              />
             </mesh>
           );
         })}

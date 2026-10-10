@@ -4,14 +4,13 @@
 // floor top 0.95, doorways at z ±4.5, seat/berth anchors preserved).
 //
 // Cost control for integrated graphics: static parts are merged into a
-// few vertex-colored meshes (one draw call each), window bars share one
-// InstancedMesh, materials/textures are module singletons. Per coach:
-// ~20 draw calls (shell, dark, interior, passengers, glass, bars,
-// roof, 4 door leaves + glass, lettering, decals, lights).
+// few vertex-colored meshes (one draw call each), materials/textures are
+// module singletons. Per coach: ~19 draw calls (shell, dark, interior,
+// glass, roof, 4 door leaves + glass, lettering, decals, lights).
 
 "use client";
 
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -49,7 +48,6 @@ const WIN_CENTERS = [-2.6, -1.3, 0, 1.3, 2.6];
 const WIN_W = 1.1;
 const GLASS_LO = 1.86;
 const GLASS_HI = 2.62;
-const BAR_YS = [2.06, 2.24, 2.42];
 
 // ---------------------------------------------------------------- shell ---
 
@@ -379,28 +377,6 @@ export default function IndianRailwayCoach({
   // One shared leaf window-glass plane.
   const leafGlassGeo = useMemo(() => new THREE.PlaneGeometry(0.6, 0.6), []);
 
-  // Instanced safety bars: 3 per window (both sides).
-  const barCount = WIN_CENTERS.length * 2 * BAR_YS.length;
-  const barsRef = useRef<THREE.InstancedMesh>(null!);
-  useLayoutEffect(() => {
-    const m = barsRef.current;
-    if (!m) return;
-    const dummy = new THREE.Object3D();
-    let i = 0;
-    for (const sx of [1, -1]) {
-      for (const z of WIN_CENTERS) {
-        for (const y of BAR_YS) {
-          dummy.position.set(sx * HW, y, z);
-          dummy.rotation.set(0, 0, Math.PI / 2);
-          dummy.scale.set(0.012, WIN_W - 0.04, 0.012);
-          dummy.updateMatrix();
-          m.setMatrixAt(i++, dummy.matrix);
-        }
-      }
-    }
-    m.instanceMatrix.needsUpdate = true;
-  }, [HW]);
-
   // Door leaves (slide toward the car center when the train is stopped).
   // The roof of the specific car the player is inside fades transparent
   // (not hidden) so the cabin reads from the third-person camera while
@@ -467,11 +443,6 @@ export default function IndianRailwayCoach({
       <mesh geometry={interiorGeo} material={mats.paint} />
       {/* Window glass (one merged mesh, rounded-corner alpha texture) */}
       <mesh geometry={glassGeo} material={glassMat} />
-      {/* Window safety bars (one instanced draw call) */}
-      <instancedMesh ref={barsRef} args={[undefined, undefined, barCount]} frustumCulled={false}>
-        <cylinderGeometry args={[1, 1, 1, 8]} />
-        <meshStandardMaterial color={C.steel} metalness={0.8} roughness={0.4} />
-      </instancedMesh>
       {/* Sliding doorway leaves + their window glass */}
       {DOORWAYS.map((d, i) => (
         <group
@@ -501,7 +472,7 @@ export default function IndianRailwayCoach({
             ref={lampMatRef}
             color="#fff6dc"
             emissive="#ffeeb8"
-            emissiveIntensity={1.6}
+            emissiveIntensity={3.2}
             transparent
           />
         </mesh>

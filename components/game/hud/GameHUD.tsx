@@ -57,6 +57,8 @@ export default function GameHUD({
         </span>
         <span className="mx-2 text-white/25">|</span>
         ESC <span className="text-white/50">menu</span>
+        <span className="mx-2 text-white/25">|</span>
+        TAB <span className="text-white/50">spawn</span>
       </div>
 
       {/* Top-right clock */}

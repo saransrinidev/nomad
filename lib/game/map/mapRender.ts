@@ -1,7 +1,8 @@
 // Shared Google-style map renderer (canvas 2D, framework-free).
 // Used by both the corner minimap and the fullscreen BigMap: ocean
 // background, Tamil Nadu outline fill, district divisions + names,
-// bike pin, blue-dot player, compass N.
+// bike pin, orange player arrow, compass N. All positions are read live
+// every animation frame so trains + player are true real-time data.
 
 import { CHUNK_SIZE, WORLD_HALF } from "@/lib/game/map/terrain";
 import { getTNGameOutline } from "@/lib/game/map/tamilnadu";
@@ -9,9 +10,12 @@ import type { RailwayMapData } from "@/lib/game/map/railway";
 
 export const MAP_LAND = "#b3e0ae";
 export const MAP_OCEAN = "#a8d8f0";
-const GOOGLE_BLUE = "#1a73e8";
 const GOOGLE_RED = "#ea4335";
 const LABEL_TEXT = "#5f6368";
+// Live player marker: bright orange nav arrow (white-ringed so it reads on
+// green land, blue rail lines and amber highlight at any zoom).
+const PLAYER_ORANGE = "#ff7a00";
+const PLAYER_ORANGE_DARK = "#e65100";
 
 export interface MapSnapshot {
   focusX: number;
@@ -228,6 +232,12 @@ export function renderMap(
   // Railway: every line, its stations + names, and live train markers.
   if (opts.railway) {
     const rw = opts.railway;
+    // Station name anchors already labeled (screen px) + names already
+    // shown: shared junctions (Chennai, Villupuram, Trichy) keep one
+    // label instead of muddy overprinting, even when their platform
+    // faces are staggered apart.
+    const labeled: [number, number][] = [];
+    const named = new Set<string>();
     for (const line of rw.lines) {
       if (line.path.length > 1) {
         ctx.strokeStyle = line.color;
@@ -252,11 +262,17 @@ export function renderMap(
         ctx.rect(mx - 4, mz - 4, 8, 8);
         ctx.fill();
         ctx.stroke();
+        const lx = mx;
+        const ly = mz + 14;
+        if (named.has(st.name)) continue;
+        if (labeled.some(([px, pz]) => Math.hypot(px - lx, pz - ly) < 14)) continue;
+        labeled.push([lx, ly]);
+        named.add(st.name);
         ctx.lineWidth = 3;
         ctx.strokeStyle = "rgba(255,255,255,0.85)";
-        ctx.strokeText(st.name, mx, mz + 14);
+        ctx.strokeText(st.name, lx, ly);
         ctx.fillStyle = LABEL_TEXT;
-        ctx.fillText(st.name, mx, mz + 14);
+        ctx.fillText(st.name, lx, ly);
       }
       ctx.textBaseline = "alphabetic";
     }
@@ -302,31 +318,43 @@ export function renderMap(
     dotX > MARGIN && dotX < size - MARGIN && dotZ > MARGIN && dotZ < size - MARGIN;
 
   if (dotVisible) {
-    // Player blue dot with heading wedge.
+    // Real-time player arrow: orange navigation chevron pointing along the
+    // live heading (playerYaw on foot, bikeYaw while riding). Rotated every
+    // frame in north-up mode; already up in heading-up mode.
     ctx.save();
     ctx.translate(dotX, dotZ);
     ctx.rotate(snap.northUp ? headAngle : 0);
-    ctx.fillStyle = GOOGLE_BLUE;
+    // Soft halo so the arrow pops over rails / district borders.
+    ctx.fillStyle = "rgba(255,122,0,0.22)";
     ctx.beginPath();
-    ctx.moveTo(0, -13);
-    ctx.lineTo(7, 4);
-    ctx.lineTo(-7, 4);
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.fill();
+    // Arrow body: pointed nose + notched tail (maps-style).
+    ctx.beginPath();
+    ctx.moveTo(0, -14);
+    ctx.lineTo(9, 8);
+    ctx.lineTo(0, 4);
+    ctx.lineTo(-9, 8);
     ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    ctx.fillStyle = "rgba(26,115,232,0.18)";
-    ctx.beginPath();
-    ctx.arc(dotX, dotZ, 13, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = GOOGLE_BLUE;
-    ctx.beginPath();
-    ctx.arc(dotX, dotZ, 6.5, 0, Math.PI * 2);
+    ctx.fillStyle = PLAYER_ORANGE;
     ctx.fill();
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
     ctx.stroke();
+    // Inner shading wedge for depth.
+    ctx.beginPath();
+    ctx.moveTo(0, -14);
+    ctx.lineTo(0, 4);
+    ctx.lineTo(-9, 8);
+    ctx.closePath();
+    ctx.fillStyle = PLAYER_ORANGE_DARK;
+    ctx.globalAlpha = 0.35;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.restore();
   } else {
-    // Off-screen edge marker pointing toward the player.
+    // Off-screen edge marker pointing toward the player (orange).
     const dx = dotX - C;
     const dz = dotZ - C;
     const len = Math.max(1, Math.hypot(dx, dz));
@@ -335,15 +363,20 @@ export function renderMap(
     ctx.save();
     ctx.translate(ex, ez);
     ctx.rotate(Math.atan2(dz, dx) + Math.PI / 2);
-    ctx.fillStyle = GOOGLE_BLUE;
     ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.lineTo(6, 5);
-    ctx.lineTo(-6, 5);
+    ctx.moveTo(0, -11);
+    ctx.lineTo(7, 6);
+    ctx.lineTo(0, 2.5);
+    ctx.lineTo(-7, 6);
     ctx.closePath();
+    ctx.fillStyle = PLAYER_ORANGE;
     ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.stroke();
     ctx.restore();
-    ctx.fillStyle = GOOGLE_BLUE;
+    ctx.fillStyle = PLAYER_ORANGE;
     ctx.beginPath();
     ctx.arc(ex, ez, 5, 0, Math.PI * 2);
     ctx.fill();

@@ -24,7 +24,7 @@ import {
   CRASH_SPIN_RATE,
 } from "./gameConstants";
 import { collideWorld } from "./playerController";
-import { collideStation, collideTrain } from "./map/railway";
+import { collideBuildings, collideStation, collideTrain } from "./map/railway";
 import { groundHeight, WORLD_HALF } from "./map/terrain";
 import type { GameWorld } from "./state";
 
@@ -169,14 +169,17 @@ export function updateBike(world: GameWorld, dt: number) {
   const tf = collideTrain(fixed.x, fixed.z, 1.1);
   // Bikes can't drive through platforms or station furniture either.
   const sc = collideStation(tf.x, tf.z, 1.1, world.bikePos.y);
+  // ...nor through station buildings (concourse halls).
+  const bc = collideBuildings(sc.x, sc.z, 1.1, world.bikePos.y);
   const hitWall =
     fixed.x !== world.bikePos.x || fixed.z !== world.bikePos.z;
   const hitTrain = tf.x !== fixed.x || tf.z !== fixed.z;
   const hitStation = sc.x !== tf.x || sc.z !== tf.z;
-  if (hitWall || hitTrain || hitStation) {
+  const hitBuilding = bc.x !== sc.x || bc.z !== sc.z;
+  if (hitWall || hitTrain || hitStation || hitBuilding) {
     const impactSpeed = world.bikeVel.length();
-    world.bikePos.x = sc.x;
-    world.bikePos.z = sc.z;
+    world.bikePos.x = bc.x;
+    world.bikePos.z = bc.z;
     if (impactSpeed >= CRASH_MIN_SPEED && !world.crashFlying && world.stun <= 0) {
       ejectRider(world, impactSpeed);
     } else {

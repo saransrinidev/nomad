@@ -35,9 +35,9 @@ export const TN_LAND_H = 2.0;
 export const TN_SEA_H = -5.0;
 export const TN_BEACH_H = 0.4;
 
-/** Paint layers: grass, alluvial soil, sand, rock, asphalt. */
+/** Paint layers: grass (white = untinted real texture), alluvial soil, sand, rock, asphalt. */
 export type PaintLayer = 0 | 1 | 2 | 3 | 4;
-export const PAINT_COLORS = ["#7fbf5f", "#77573a", "#d9c48f", "#8d8d94", "#3f4448"];
+export const PAINT_COLORS = ["#ffffff", "#b07a4a", "#f4df9e", "#c9ccd4", "#7b8794"];
 
 export interface TerrainData {
   heights: Float32Array;

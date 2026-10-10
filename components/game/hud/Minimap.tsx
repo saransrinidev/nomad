@@ -25,8 +25,10 @@ function snapshot(w: GameWorld): MapSnapshot {
   return {
     focusX: focus.x,
     focusZ: focus.z,
-    px: w.playerPos.x,
-    pz: w.playerPos.z,
+    // Live marker follows the active vehicle: when riding, the arrow sits
+    // on the bike (playerPos goes stale at the dismount point otherwise).
+    px: focus.x,
+    pz: focus.z,
     yaw,
     riding,
     bikeX: w.bikePos.x,
@@ -65,11 +67,10 @@ export default function Minimap({
     const RANGE = ZOOM_LEVELS[zoomIdx] ?? ZOOM_LEVELS[1];
 
     let raf = 0;
-    let last = 0;
-    const draw = (now: number) => {
+    // Real-time: redraw every animation frame (no throttle) so the orange
+    // player arrow + live train markers track the sim 1:1.
+    const draw = () => {
       raf = requestAnimationFrame(draw);
-      if (now - last < 100) return;
-      last = now;
       const w = worldRef.current;
       const div = getMapDivisions();
       renderMap(

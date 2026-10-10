@@ -113,7 +113,7 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
         castShadow
         frustumCulled={false}
       >
-        <meshStandardMaterial color="#7a5230" roughness={1} flatShading />
+        <meshStandardMaterial color="#8f6238" roughness={1} flatShading />
       </instancedMesh>
       <instancedMesh
         ref={foliageRef}
@@ -121,7 +121,7 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
         castShadow
         frustumCulled={false}
       >
-        <meshStandardMaterial color="#3f7d36" roughness={1} flatShading />
+        <meshStandardMaterial color="#2fa84f" roughness={1} flatShading />
       </instancedMesh>
       <instancedMesh
         ref={rockRef}
@@ -130,7 +130,7 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
         receiveShadow
         frustumCulled={false}
       >
-        <meshStandardMaterial color="#8d8d94" roughness={1} flatShading />
+        <meshStandardMaterial color="#c9ccd4" roughness={1} flatShading />
       </instancedMesh>
     </group>
   );
