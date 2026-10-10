@@ -2,10 +2,23 @@
 // Pure data — no React, no Three.js. Safe to import anywhere,
 // including a future multiplayer server.
 
+import { latLonToGame } from "./map/tamilnadu";
+
 export type RideMode = "walk" | "ride" | "train";
 
-export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
-export const BIKE_SPAWN: [number, number, number] = [3.5, 0, 2.5];
+// Spawn slabs near real Thanjavur district land (~165 m from Thanjavur Jn).
+const _spawn = latLonToGame(79.2, 10.79);
+
+export const PLAYER_SPAWN: [number, number, number] = [
+  _spawn.x + 20,
+  0,
+  _spawn.z,
+];
+export const BIKE_SPAWN: [number, number, number] = [
+  _spawn.x + 23.5,
+  0,
+  _spawn.z + 2.5,
+];
 export const BIKE_SPAWN_YAW = -0.6;
 
 export const INTERACT_DISTANCE = 3.2;
@@ -33,11 +46,30 @@ export const BIKE_STEER_SPEED = 6;
 /** Parked lean onto the side stand (roll, radians). */
 export const BIKE_PARK_LEAN = -0.16;
 
+// --- Crash physics (bike ejection). Below CRASH_MIN_SPEED an impact just
+// stops the bike; above it the rider is launched on a ballistic arc.
+// Eject: horizontal keeps CRASH_KEEP of impact speed (capped), vertical pop
+// scales with speed (capped). g = GRAVITY (22 m/s²).
+export const CRASH_MIN_SPEED = 10; // m/s (~36 km/h)
+export const CRASH_KEEP = 0.75;
+export const CRASH_MAX_FLY = 26; // m/s horizontal cap
+export const CRASH_POP_BASE = 3;
+export const CRASH_POP_RATE = 0.22;
+export const CRASH_POP_MAX = 9.5; // m/s vertical cap
+export const CRASH_SPIN_BASE = 6; // rad/s tumble
+export const CRASH_SPIN_RATE = 0.25;
+export const CRASH_SPIN_MAX = 14;
+export const CRASH_BOUNCE_VY = 13.5; // slam harder than this bounces once
+export const CRASH_BOUNCE_KEEP = 0.35;
+export const CRASH_STUN_BASE = 0.8; // s dazed on landing
+export const CRASH_STUN_RATE = 0.06;
+export const CRASH_STUN_MAX = 2.0;
+
 // --- Third-person camera (free 360° vertical orbit; ground clamp keeps it
 // out of the terrain, lookAt stays stable just shy of exact top-down) ---
 export const CAM_DISTANCE = 6.5;
 export const CAM_RIDE_DISTANCE = 8;
-export const CAM_HEIGHT = 1.8;
+export const CAM_HEIGHT = 1.5;
 export const CAM_MIN_PITCH = -1.45;
 export const CAM_MAX_PITCH = 1.55;
 export const CAM_MIN_DISTANCE = 3.5;

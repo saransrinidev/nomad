@@ -6,7 +6,12 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { renderMap, type MapSnapshot } from "@/lib/game/map/mapRender";
-import { getMapDivisions } from "@/lib/game/map/districts";
+import {
+  ensureDistrictsLoaded,
+  getMapDivisions,
+  getThanjavurLabel,
+  getThanjavurRings,
+} from "@/lib/game/map/districts";
 import { getRailwayMapData } from "@/lib/game/map/railway";
 import type { GameWorld } from "@/lib/game/state";
 
@@ -47,6 +52,7 @@ export default function Minimap({
   const [zoomIdx, setZoomIdx] = useState(1);
 
   useEffect(() => {
+    void ensureDistrictsLoaded();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -76,6 +82,8 @@ export default function Minimap({
           districtLabels: div.labels,
           labelFont: "600 9px sans-serif",
           railway: getRailwayMapData(),
+          highlightRings: getThanjavurRings(),
+          highlightLabel: getThanjavurLabel(),
         },
       );
     };

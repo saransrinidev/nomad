@@ -13,9 +13,18 @@ import {
   BIKE_STEER_SPEED,
   BIKE_TAPER,
   BIKE_TURN_RATE,
+  CRASH_KEEP,
+  CRASH_MAX_FLY,
+  CRASH_MIN_SPEED,
+  CRASH_POP_BASE,
+  CRASH_POP_MAX,
+  CRASH_POP_RATE,
+  CRASH_SPIN_BASE,
+  CRASH_SPIN_MAX,
+  CRASH_SPIN_RATE,
 } from "./gameConstants";
 import { collideWorld } from "./playerController";
-import { collideTrain } from "./map/railway";
+import { collideStation, collideTrain } from "./map/railway";
 import { groundHeight, WORLD_HALF } from "./map/terrain";
 import type { GameWorld } from "./state";
 
@@ -35,6 +44,43 @@ function clamp(v: number, min: number, max: number) {
 export function bikeLeanAngle(world: GameWorld): number {
   const speedFactor = clamp(Math.abs(world.bikeSpeed) / 20, 0, 1);
   return -world.bikeSteer * 0.35 * speedFactor;
+}
+
+/**
+ * Launch the rider off the bike on a ballistic arc. Eject velocity keeps a
+ * fraction of the impact speed horizontally (capped) plus a speed-scaled
+ * vertical pop (capped); gravity (GRAVITY) does the rest in updateCrashFlight.
+ * Mode flips to walk so the camera, HUD, and Player follow the flyer —
+ * GameRig mirrors the change into React state (see onMode).
+ */
+function ejectRider(world: GameWorld, impactSpeed: number) {
+  let dx = world.bikeVel.x;
+  let dz = world.bikeVel.z;
+  if (Math.hypot(dx, dz) < 0.01) {
+    dx = Math.sin(world.bikeYaw);
+    dz = Math.cos(world.bikeYaw);
+  }
+  const len = Math.hypot(dx, dz);
+  const vh = Math.min(impactSpeed * CRASH_KEEP, CRASH_MAX_FLY);
+  const vy = Math.min(CRASH_POP_BASE + impactSpeed * CRASH_POP_RATE, CRASH_POP_MAX);
+  world.playerPos.set(
+    world.bikePos.x + (dx / len) * 0.6,
+    world.bikePos.y + 1.0,
+    world.bikePos.z + (dz / len) * 0.6,
+  );
+  world.crashVel.set((dx / len) * vh, vy, (dz / len) * vh);
+  world.playerVelY = 0;
+  world.playerYaw = Math.atan2(dx, dz);
+  world.crashSpin = Math.min(CRASH_SPIN_BASE + impactSpeed * CRASH_SPIN_RATE, CRASH_SPIN_MAX);
+  world.crashFlying = true;
+  world.stun = 0;
+  world.playerSpeed = vh;
+  world.playerMoving = true;
+  world.mode = "walk";
+  // The bike itself stops almost dead (small residual slide).
+  world.bikeSpeed = 0;
+  world.bikeVel.multiplyScalar(0.15);
+  world.bikeDrift = false;
 }
 
 export function updateBike(world: GameWorld, dt: number) {
@@ -119,16 +165,24 @@ export function updateBike(world: GameWorld, dt: number) {
   }
   world.bikePos.y = groundHeight(world.bikePos.x, world.bikePos.z);
 
-  const fixed = collideWorld(world.bikePos.x, world.bikePos.z, 1.1);
+  const fixed = collideWorld(world.bikePos.x, world.bikePos.z);
   const tf = collideTrain(fixed.x, fixed.z, 1.1);
+  // Bikes can't drive through platforms or station furniture either.
+  const sc = collideStation(tf.x, tf.z, 1.1, world.bikePos.y);
   const hitWall =
     fixed.x !== world.bikePos.x || fixed.z !== world.bikePos.z;
   const hitTrain = tf.x !== fixed.x || tf.z !== fixed.z;
-  if (hitWall || hitTrain) {
-    world.bikePos.x = hitTrain ? tf.x : fixed.x;
-    world.bikePos.z = hitTrain ? tf.z : fixed.z;
-    world.bikeSpeed *= 0.3; // scrub speed on impact
-    world.bikeVel.multiplyScalar(0.3);
+  const hitStation = sc.x !== tf.x || sc.z !== tf.z;
+  if (hitWall || hitTrain || hitStation) {
+    const impactSpeed = world.bikeVel.length();
+    world.bikePos.x = sc.x;
+    world.bikePos.z = sc.z;
+    if (impactSpeed >= CRASH_MIN_SPEED && !world.crashFlying && world.stun <= 0) {
+      ejectRider(world, impactSpeed);
+    } else {
+      world.bikeSpeed *= 0.3; // scrub speed on impact
+      world.bikeVel.multiplyScalar(0.3);
+    }
   }
 
   world.wheelSpin += (world.bikeSpeed / 0.35) * step;

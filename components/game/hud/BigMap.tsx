@@ -8,7 +8,13 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { headingAngle, renderMap } from "@/lib/game/map/mapRender";
-import { getMapDivisions } from "@/lib/game/map/districts";
+import {
+  districtsReady,
+  ensureDistrictsLoaded,
+  getMapDivisions,
+  getThanjavurLabel,
+  getThanjavurRings,
+} from "@/lib/game/map/districts";
 import { getRailwayMapData } from "@/lib/game/map/railway";
 import { metersToLatLong } from "@/lib/game/map/geo";
 import type { GameWorld } from "@/lib/game/state";
@@ -42,6 +48,7 @@ export default function BigMap({
   const [range, setRange] = useState(DEFAULT_RANGE);
   const [follow, setFollow] = useState(true);
   const [dragging, setDragging] = useState(false);
+  const [exact, setExact] = useState(() => districtsReady());
   // View center in game meters. Tracks the player while following.
   const centerRef = useRef({ x: 0, z: 0 });
   const dragRef = useRef({ active: false, lx: 0, ly: 0 });
@@ -53,10 +60,16 @@ export default function BigMap({
   northUpRef.current = northUp;
 
   useEffect(() => {
+    void ensureDistrictsLoaded();
+    const id = window.setInterval(() => setExact(districtsReady()), 500);
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return () => window.clearInterval(id);
+    }
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      return () => window.clearInterval(id);
+    }
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = SIZE * dpr;
     canvas.height = SIZE * dpr;
@@ -101,6 +114,8 @@ export default function BigMap({
           districtLabels: div.labels,
           labelFont: "600 11px sans-serif",
           railway: getRailwayMapData(),
+          highlightRings: getThanjavurRings(),
+          highlightLabel: getThanjavurLabel(),
         },
       );
       // Corner coordinates of the current view.
@@ -112,7 +127,10 @@ export default function BigMap({
       ctx.fillText(cornerLabel(cx + r, cz + r), SIZE - 10, SIZE - 10);
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearInterval(id);
+    };
   }, [worldRef]);
 
   // Wheel zoom (native non-passive listener so the page never scrolls).
@@ -161,6 +179,18 @@ export default function BigMap({
             {district ? (
               <span className="text-[#5f6368]"> &middot; {district}</span>
             ) : null}
+            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[#fef3e2] px-2 py-0.5 text-[11px] font-bold text-[#b06000]">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm border border-[#e8710a] bg-[#f9ab00]/60" />
+              Thanjavur
+            </span>
+            <span
+              className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                exact ? "bg-[#e6f4ea] text-[#137333]" : "bg-black/5 text-[#5f6368]"
+              }`}
+              title={exact ? "Real district borders loaded" : "Loading real borders…"}
+            >
+              {exact ? "exact borders" : "boxes…"}
+            </span>
             {!follow ? (
               <span className="text-[#1a73e8]"> &middot; free view</span>
             ) : null}
@@ -232,7 +262,7 @@ export default function BigMap({
         </div>
         <div className="bg-white px-4 py-2 text-[11px] text-[#5f6368]">
           Drag to explore &middot; scroll to zoom &middot; blue dot is you
-          &middot; M / ESC to close
+          &middot; orange fill is Thanjavur &middot; M / ESC to close
         </div>
       </div>
     </div>

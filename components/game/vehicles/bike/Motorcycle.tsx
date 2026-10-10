@@ -12,6 +12,7 @@ import BikeModel from "./BikeModel";
 import { bikeLeanAngle, updateBike } from "@/lib/game/bikeController";
 import { updateEngine } from "@/lib/game/audio";
 import { nightFactor } from "@/lib/game/map/time";
+import { groundHeight } from "@/lib/game/map/terrain";
 import { BIKE_PARK_LEAN } from "@/lib/game/gameConstants";
 import type { GameWorld } from "@/lib/game/state";
 
@@ -66,6 +67,10 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
 
     const parked = world.mode === "walk";
     if (parked) {
+      // The ride controller (which grounds the bike) doesn't run while
+      // parked, so pin the bike to the terrain here — otherwise it keeps
+      // whatever y it was created/reset with and sinks under the land.
+      world.bikePos.y = groundHeight(world.bikePos.x, world.bikePos.z);
       worldRef.current.bikeSteer += (0 - world.bikeSteer) * Math.min(1, dt * 6);
     }
     const targetLean = parked ? BIKE_PARK_LEAN : bikeLeanAngle(world);

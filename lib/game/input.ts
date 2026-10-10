@@ -22,6 +22,7 @@ const CODE_MAP: Record<string, "forward" | "back" | "left" | "right"> = {
 export function useKeyboardInput(worldRef: RefObject<GameWorld>) {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      if (!worldRef.current) return;
       const keys = worldRef.current.keys;
       const dir = CODE_MAP[e.code];
       if (dir) {
@@ -39,6 +40,7 @@ export function useKeyboardInput(worldRef: RefObject<GameWorld>) {
       }
     };
     const up = (e: KeyboardEvent) => {
+      if (!worldRef.current) return;
       const keys = worldRef.current.keys;
       const dir = CODE_MAP[e.code];
       if (dir) {
@@ -52,6 +54,7 @@ export function useKeyboardInput(worldRef: RefObject<GameWorld>) {
       if (e.code === "Space") keys.brake = false;
     };
     const blur = () => {
+      if (!worldRef.current) return;
       const keys = worldRef.current.keys;
       keys.forward = false;
       keys.back = false;

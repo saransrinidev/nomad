@@ -1,5 +1,5 @@
 // Sky system: gradient dome, stars, sun + moon (sprites and lights),
-// drifting low-poly clouds, and per-frame fog/background grading.
+// drifting fluffy billboard clouds, and per-frame fog/background grading.
 // Owns the clock: advances world.time unless paused.
 
 "use client";
@@ -16,8 +16,8 @@ import {
 } from "@/lib/game/map/time";
 import { getFocusPoint, type GameWorld } from "@/lib/game/state";
 
-const CLOUD_COUNT = 22;
-const PUFFS_PER_CLOUD = 4;
+const CLOUD_COUNT = 24;
+const CLOUD_VARIANTS = 4;
 
 function makeGlowTexture(): THREE.CanvasTexture {
   const size = 128;
@@ -31,19 +31,107 @@ function makeGlowTexture(): THREE.CanvasTexture {
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(canvas);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
-interface CloudPuff {
+/**
+ * Bakes one fluffy cumulus puff-sheet: many overlapping soft radial blobs
+ * composited on a 256x128 canvas, then masked with a soft elliptical falloff
+ * so the sprite silhouette is blurry all around — same soft-body language as
+ * the sun glow sprite (no hard polygonal edges, no flat shading).
+ */
+function makeFluffyCloudTexture(seed: number): THREE.CanvasTexture {
+  const W = 256;
+  const H = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  let s = seed;
+  const rand = () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+
+  ctx.clearRect(0, 0, W, H);
+
+  // --- Body: large soft blobs clustered around the middle (denser below). ---
+  const blobs = 20 + Math.floor(rand() * 6);
+  for (let i = 0; i < blobs; i++) {
+    const t = rand(); // 0..1 horizontal spread
+    const cx = W * 0.5 + (t - 0.5) * W * 0.62;
+    // Bias puffs toward the vertical centre, with a fuller belly.
+    const belly = Math.cos((t - 0.5) * Math.PI) * H * 0.08;
+    const cy = H * 0.58 - belly * 0.5 + (rand() - 0.5) * H * 0.38;
+    const r = 20 + rand() * 34;
+    const a = 0.42 + rand() * 0.38; // per-puff peak alpha
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(255,255,255,${a.toFixed(3)})`);
+    g.addColorStop(0.45, `rgba(255,255,255,${(a * 0.55).toFixed(3)})`);
+    g.addColorStop(0.75, `rgba(255,255,255,${(a * 0.18).toFixed(3)})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // --- Crown: smaller brighter highlights along the top for a lit fluffy top. ---
+  const caps = 7 + Math.floor(rand() * 4);
+  for (let i = 0; i < caps; i++) {
+    const cx = W * 0.5 + (rand() - 0.5) * W * 0.48;
+    const cy = H * 0.38 + (rand() - 0.5) * H * 0.22;
+    const r = 12 + rand() * 18;
+    const a = 0.5 + rand() * 0.3;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(255,255,255,${a.toFixed(3)})`);
+    g.addColorStop(0.6, `rgba(255,255,255,${(a * 0.35).toFixed(3)})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // --- Soft elliptical mask: fades the sheet edges to zero so the billboard
+  // never shows a rectangular cutout (fully blurry silhouette like the sun). ---
+  ctx.globalCompositeOperation = "destination-in";
+  const mask = ctx.createRadialGradient(W / 2, H / 2, H * 0.1, W / 2, H / 2, W * 0.52);
+  mask.addColorStop(0, "rgba(0,0,0,1)");
+  mask.addColorStop(0.55, "rgba(0,0,0,0.9)");
+  mask.addColorStop(0.8, "rgba(0,0,0,0.38)");
+  mask.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = mask;
+  // Elliptical coverage: scale the fill so vertical falloff is tighter.
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(1, H / W);
+  ctx.translate(-W / 2, -H / 2);
+  ctx.fillRect(0, -H, W, H * 3);
+  ctx.restore();
+
+  ctx.globalCompositeOperation = "source-over";
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
+interface Cloud {
   bx: number;
   by: number;
   bz: number;
-  ox: number;
-  oy: number;
-  oz: number;
-  sx: number;
-  sy: number;
-  sz: number;
+  variant: number;
+  scaleX: number;
+  scaleY: number;
+  opacity: number;
+  drift: number;
+  bobPhase: number;
+  bobAmp: number;
 }
 
 export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
@@ -54,10 +142,9 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
   const sunSprite = useRef<THREE.Sprite>(null!);
   const moonSprite = useRef<THREE.Sprite>(null!);
   const starsRef = useRef<THREE.Points>(null!);
-  const cloudsRef = useRef<THREE.InstancedMesh>(null!);
+  const cloudRefs = useRef<(THREE.Sprite | null)[]>([]);
   const elapsedRef = useRef(0);
   const scratchTarget = useMemo(() => new THREE.Object3D(), []);
-  const dummy = useMemo(() => new THREE.Object3D(), []);
 
   const skyMat = useMemo(
     () =>
@@ -109,6 +196,13 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
     () => (typeof document === "undefined" ? null : makeGlowTexture()),
     [],
   );
+  const cloudTexs = useMemo(
+    () =>
+      typeof document === "undefined"
+        ? null
+        : Array.from({ length: CLOUD_VARIANTS }, (_, i) => makeFluffyCloudTexture(1234 + i * 777)),
+    [],
+  );
 
   const starGeo = useMemo(() => {
     let s = 777;
@@ -130,45 +224,38 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
     return g;
   }, []);
 
-  const cloudGeo = useMemo(() => new THREE.SphereGeometry(1, 7, 6), []);
-  const cloudMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: "#ffffff",
-        roughness: 1,
-        flatShading: true,
-      }),
-    [],
-  );
-
-  const puffs = useMemo<CloudPuff[]>(() => {
+  const clouds = useMemo<Cloud[]>(() => {
     let s = 4242;
     const rand = () => {
       s = (s * 16807) % 2147483647;
       return (s - 1) / 2147483646;
     };
-    const list: CloudPuff[] = [];
+    const list: Cloud[] = [];
     for (let c = 0; c < CLOUD_COUNT; c++) {
-      const bx = (rand() - 0.5) * 560;
-      const by = 62 + rand() * 48;
-      const bz = (rand() - 0.5) * 560;
-      for (let p = 0; p < PUFFS_PER_CLOUD; p++) {
-        const sc = 6 + rand() * 7;
-        list.push({
-          bx,
-          by,
-          bz,
-          ox: (rand() - 0.5) * 16,
-          oy: (rand() - 0.5) * 3,
-          oz: (rand() - 0.5) * 8,
-          sx: sc,
-          sy: sc * 0.55,
-          sz: sc * 0.8,
-        });
-      }
+      const wide = rand() < 0.3; // a few big hero clouds, rest mid-size
+      const sx = wide ? 70 + rand() * 40 : 38 + rand() * 34;
+      list.push({
+        bx: (rand() - 0.5) * 560,
+        by: 72 + rand() * 58,
+        bz: (rand() - 0.5) * 560,
+        variant: Math.floor(rand() * CLOUD_VARIANTS),
+        scaleX: sx,
+        scaleY: sx * (0.38 + rand() * 0.14),
+        opacity: 0.55 + rand() * 0.35,
+        drift: 0.7 + rand() * 0.6,
+        bobPhase: rand() * Math.PI * 2,
+        bobAmp: 0.8 + rand() * 1.6,
+      });
     }
+    // Far -> near sort helps transparent blending stability.
+    list.sort((a, b) => b.by - a.by);
     return list;
   }, []);
+
+  // Scratch colors (never reallocated in the frame loop).
+  const tmpCloud = useMemo(() => new THREE.Color(), []);
+  const tmpLight = useMemo(() => new THREE.Color(), []);
+  const tmpTop = useMemo(() => new THREE.Color(), []);
 
   useFrame(({ scene, gl }, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
@@ -247,25 +334,31 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
     (starsRef.current.material as THREE.PointsMaterial).opacity = night;
     starsRef.current.position.set(focus.x, 0, focus.z);
 
-    // Clouds drift with the wind (+X) and wrap around the player.
-    cloudMat.color.set(sample.top).lerp(new THREE.Color("#ffffff"), 1 - night * 0.75);
+    // Fluffy billboard clouds: same soft-sprite language as the sun.
     if (!world.paused) elapsedRef.current += dt;
-    const driftX = (elapsedRef.current * 2) % 560;
-    for (let i = 0; i < puffs.length; i++) {
-      const p = puffs[i];
-      let dx = (p.bx + p.ox + driftX - focus.x) % 560;
+    const t = elapsedRef.current;
+    tmpLight.set(sample.light);
+    tmpTop.set(sample.top);
+    for (let i = 0; i < clouds.length; i++) {
+      const c = clouds[i];
+      const sp = cloudRefs.current[i];
+      if (!sp) continue;
+      const driftX = (t * 2 * c.drift) % 560;
+      let dx = (c.bx + driftX - focus.x) % 560;
       if (dx > 280) dx -= 560;
       if (dx < -280) dx += 560;
-      let dz = (p.bz + p.oz - focus.z) % 560;
+      let dz = (c.bz - focus.z) % 560;
       if (dz > 280) dz -= 560;
       if (dz < -280) dz += 560;
-      dummy.position.set(focus.x + dx, p.by + p.oy, focus.z + dz);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(p.sx, p.sy, p.sz);
-      dummy.updateMatrix();
-      cloudsRef.current.setMatrixAt(i, dummy.matrix);
+      const bobY = Math.sin(t * 0.12 * c.drift + c.bobPhase) * c.bobAmp;
+      sp.position.set(focus.x + dx, c.by + bobY, focus.z + dz);
+      const mat = sp.material as THREE.SpriteMaterial;
+      // Day: white kissed by the key-light tint; night: sink toward sky top.
+      tmpCloud.set("#ffffff").lerp(tmpLight, 0.28 * (1 - night));
+      tmpCloud.lerp(tmpTop, night * 0.72);
+      mat.color.copy(tmpCloud);
+      mat.opacity = c.opacity * (1 - night * 0.62);
     }
-    cloudsRef.current.instanceMatrix.needsUpdate = true;
   });
 
   return (
@@ -290,8 +383,8 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
         castShadow
         intensity={1.6}
         color="#fff4e0"
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
         shadow-camera-left={-45}
         shadow-camera-right={45}
         shadow-camera-top={45}
@@ -304,11 +397,24 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
       />
       <directionalLight ref={moonRef} intensity={0} color="#a8c0ff" target={scratchTarget} />
       <primitive object={scratchTarget} />
-      <instancedMesh
-        ref={cloudsRef}
-        args={[cloudGeo, cloudMat, puffs.length]}
-        frustumCulled={false}
-      />
+      {cloudTexs &&
+        clouds.map((c, i) => (
+          <sprite
+            key={i}
+            ref={(sp) => {
+              cloudRefs.current[i] = sp;
+            }}
+            scale={[c.scaleX, c.scaleY, 1]}
+          >
+            <spriteMaterial
+              map={cloudTexs[c.variant]}
+              transparent
+              opacity={c.opacity}
+              depthWrite={false}
+              fog={false}
+            />
+          </sprite>
+        ))}
     </group>
   );
 }

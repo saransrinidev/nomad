@@ -13,8 +13,8 @@ import {
   PLAYER_SPAWN,
   type RideMode,
 } from "./gameConstants";
-import type { BuildingType } from "./map/village";
 import { START_TIME } from "./map/time";
+import { groundHeight } from "./map/terrain";
 import { initialTrainState, type TrainSimState } from "./map/railway";
 
 export interface KeyState {
@@ -51,6 +51,14 @@ export interface GameWorld {
   playerMoving: boolean;
   playerRunning: boolean;
   walkPhase: number;
+  /** Ballistic flight after a bike crash (see bikeController ejectRider). */
+  crashFlying: boolean;
+  /** World-space flight velocity while crashFlying. */
+  crashVel: THREE.Vector3;
+  /** Tumble rate (rad/s) for the crash visual. */
+  crashSpin: number;
+  /** Seconds of no-input daze after landing a crash. */
+  stun: number;
 
   // Bike state
   bikePos: THREE.Vector3;
@@ -76,15 +84,6 @@ export interface GameWorld {
 
   // Interaction
   nearBike: boolean;
-  /** Index into BUILDING_DOORS of the door the player is standing at, or null. */
-  nearDoor: number | null;
-
-  // Interior scene
-  /** Building type whose interior the player is currently inside, or null outdoors. */
-  interior: BuildingType | null;
-  /** Outdoor position to restore when the player exits the building. */
-  returnPos: THREE.Vector3;
-  returnYaw: number;
 
   /** Time of day in game hours (0-24). 1 real minute = 1 game hour. */
   time: number;
@@ -96,20 +95,31 @@ export interface GameWorld {
 }
 
 export function createInitialWorld(): GameWorld {
+  // Spawn on the terrain surface: the island plate sits at ~2 m, so the
+  // raw [x, 0, z] spawn constants would bury the bike under the ground
+  // (the parked bike never runs the ride controller that grounds it).
+  const playerPos = new THREE.Vector3(...PLAYER_SPAWN);
+  playerPos.y = groundHeight(playerPos.x, playerPos.z);
+  const bikePos = new THREE.Vector3(...BIKE_SPAWN);
+  bikePos.y = groundHeight(bikePos.x, bikePos.z);
   return {
     mode: "walk",
     keys: createEmptyKeys(),
     paused: false,
 
-    playerPos: new THREE.Vector3(...PLAYER_SPAWN),
+    playerPos,
     playerYaw: 0,
     playerVelY: 0,
     playerSpeed: 0,
     playerMoving: false,
     playerRunning: false,
     walkPhase: 0,
+    crashFlying: false,
+    crashVel: new THREE.Vector3(),
+    crashSpin: 0,
+    stun: 0,
 
-    bikePos: new THREE.Vector3(...BIKE_SPAWN),
+    bikePos,
     bikeYaw: BIKE_SPAWN_YAW,
     bikeSpeed: 0,
     bikeSteer: 0,
@@ -125,11 +135,6 @@ export function createInitialWorld(): GameWorld {
     camManualZoom: false,
 
     nearBike: false,
-    nearDoor: null,
-
-    interior: null,
-    returnPos: new THREE.Vector3(...PLAYER_SPAWN),
-    returnYaw: 0,
 
     time: START_TIME,
 

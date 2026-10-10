@@ -1,11 +1,12 @@
 // District lookup for the Tamil Nadu plain.
 //
 // Two-tier system:
-// 1. Exact: if the user drops their district FeatureCollection at
-//    /maps/tn-districts.geojson (public/maps/tn-districts.geojson), it is
-//    fetched once, projected to game meters, and used for point-in-polygon
-//    tests (Polygon + MultiPolygon with holes supported). Property keys
-//    tried: district, DISTRICT, name, Name.
+// 1. Exact: FeatureCollection at /maps/tn-districts.geojson
+//    (public/maps/tn-districts.geojson — built 38-district simplified cut via
+//    scripts/build-tn-districts.mjs), fetched once, projected to game meters,
+//    and used for point-in-polygon tests (Polygon + MultiPolygon with holes
+//    supported). Property keys tried: district, DISTRICT, dtname, DTNAME,
+//    NAME_2, name, Name, dt_name.
 // 2. Fallback: coarse per-district lon/lat boxes (38 districts) so the toast
 //    + map label work with zero setup. Smallest-area box wins on overlap.
 
@@ -69,8 +70,16 @@ export function parseDistrictGeoJSON(fc: unknown): DistrictPoly[] {
     if (!f || typeof f !== "object") continue;
     const props = (f as { properties?: Record<string, unknown> }).properties ?? {};
     const rawName =
-      props.district ?? props.DISTRICT ?? props.name ?? props.Name ?? props.dt_name;
+      props.district ??
+      props.DISTRICT ??
+      props.dtname ??
+      props.DTNAME ??
+      props.NAME_2 ??
+      props.name ??
+      props.Name ??
+      props.dt_name;
     if (typeof rawName !== "string" || rawName.trim() === "") continue;
+    const name = canonicalDistrictName(rawName.trim());
     const geom = (f as { geometry?: { type?: string; coordinates?: unknown } }).geometry;
     if (!geom || typeof geom.type !== "string") continue;
     const polys: DistrictPoly["polys"] = [];
@@ -92,9 +101,35 @@ export function parseDistrictGeoJSON(fc: unknown): DistrictPoly[] {
         for (const p of geom.coordinates as unknown[]) pushPolygon(p);
       }
     }
-    if (polys.length > 0) out.push({ name: rawName.trim(), polys });
+    if (polys.length > 0) out.push({ name, polys });
   }
   return out;
+}
+
+/** Normalize source spellings to the canonical 38 game names. */
+function canonicalDistrictName(raw: string): string {
+  switch (raw.toLowerCase()) {
+    case "kanniyakumari":
+      return "Kanyakumari";
+    case "the nilgiris":
+    case "nilgiris":
+      return "Nilgiris";
+    case "tuticorin":
+    case "thoothukudi":
+      return "Thoothukkudi";
+    case "villupuram":
+      return "Viluppuram";
+    case "kanchipuram":
+    case "kancheepuram":
+      return "Kancheepuram";
+    case "thiruvarur":
+    case "tiruvarur":
+      return "Tiruvarur";
+    case "thiruvallur":
+      return "Thiruvallur";
+    default:
+      return raw;
+  }
 }
 
 /** Fetch + cache the GeoJSON. Never throws; resolves false when unavailable. */
@@ -178,6 +213,45 @@ export function getMapDivisions(): MapDivisions {
     return { rings: getDistrictRings(), labels: getDistrictLabelPoints(), exact: true };
   }
   return { rings: getFallbackRings(), labels: getFallbackLabelPoints(), exact: false };
+}
+
+export const THANJAVUR_NAME = "Thanjavur";
+
+/** Outer rings of Thanjavur alone — exact GeoJSON polys when loaded, else the fallback box. */
+export function getThanjavurRings(): ProjectedRing[][] {
+  if (loaded) {
+    const match = loaded.filter((d) => d.name.toLowerCase() === THANJAVUR_NAME.toLowerCase());
+    if (match.length > 0) {
+      const out: ProjectedRing[][] = [];
+      for (const d of match) for (const p of d.polys) out.push(p.outer);
+      if (out.length > 0) return out;
+    }
+  }
+  const box = FALLBACK_DISTRICTS.find(
+    (b) => b.name.toLowerCase() === THANJAVUR_NAME.toLowerCase(),
+  );
+  if (!box) return [];
+  const corners: [number, number][] = [
+    [box.minLon, box.minLat],
+    [box.maxLon, box.minLat],
+    [box.maxLon, box.maxLat],
+    [box.minLon, box.maxLat],
+  ];
+  return [corners.map(([lon, lat]) => latLonToGame(lon, lat))];
+}
+
+/** Label anchor for Thanjavur alone (centroid of its first ring). */
+export function getThanjavurLabel(): { name: string; x: number; z: number } | null {
+  const rings = getThanjavurRings();
+  if (rings.length === 0) return null;
+  let x = 0;
+  let z = 0;
+  const ring = rings[0];
+  for (const p of ring) {
+    x += p.x;
+    z += p.z;
+  }
+  return { name: THANJAVUR_NAME, x: x / ring.length, z: z / ring.length };
 }
 
 // --- Fallback: coarse lon/lat boxes (half-open intervals) ---

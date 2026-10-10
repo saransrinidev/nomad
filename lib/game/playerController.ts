@@ -3,21 +3,19 @@
 // can later run on a multiplayer server. Called every frame from Player.tsx.
 
 import {
+  CRASH_BOUNCE_KEEP,
+  CRASH_BOUNCE_VY,
+  CRASH_STUN_BASE,
+  CRASH_STUN_MAX,
+  CRASH_STUN_RATE,
   GRAVITY,
   PLAYER_ACCEL,
   PLAYER_TURN_SPEED,
   RUN_SPEED,
   WALK_SPEED,
 } from "./gameConstants";
-import { BUILDING_DOORS } from "./map/village";
-import { carryDelta, coachFloorAt, collideTrain, platformTopAt } from "./map/railway";
+import { carryDelta, coachFloorAt, collideStation, collideTrain, platformTopAt, stairTopAt } from "./map/railway";
 import { groundHeight, WORLD_HALF } from "./map/terrain";
-import {
-  ROOM_HALF_X,
-  ROOM_HALF_Z,
-  WALL_T,
-} from "./map/interior";
-import { INTERACT_DISTANCE } from "./gameConstants";
 import type { GameWorld } from "./state";
 
 function damp(current: number, target: number, rate: number, dt: number) {
@@ -33,71 +31,74 @@ function lerpAngle(current: number, target: number, rate: number, dt: number) {
   return current + delta * t;
 }
 
-function collideBox(
-  x: number,
-  z: number,
-  radius: number,
-  bx: number,
-  bz: number,
-  halfX: number,
-  halfZ: number,
-): { x: number; z: number } {
-  const dx = x - bx;
-  const dz = z - bz;
-  const px = halfX + radius - Math.abs(dx);
-  const pz = halfZ + radius - Math.abs(dz);
-  if (px > 0 && pz > 0) {
-    if (px < pz) return { x: bx + Math.sign(dx || 1) * (halfX + radius), z };
-    return { x, z: bz + Math.sign(dz || 1) * (halfZ + radius) };
-  }
+/** World collision: open land — no buildings, everything free to walk through. */
+export function collideWorld(x: number, z: number): { x: number; z: number } {
   return { x, z };
-}
-
-/** World collision: plain land has no buildings, so no colliders. */
-export function collideWorld(
-  x: number,
-  z: number,
-  _radius: number,
-): { x: number; z: number } {
-  return { x, z };
-}
-
-/** Keep the player inside the interior room (local coords centered at origin). */
-export function clampToRoom(
-  x: number,
-  z: number,
-  radius: number,
-): { x: number; z: number } {
-  const lx = ROOM_HALF_X - WALL_T - radius;
-  const lz = ROOM_HALF_Z - WALL_T - radius;
-  return {
-    x: Math.min(lx, Math.max(-lx, x)),
-    z: Math.min(lz, Math.max(-lz, z)),
-  };
 }
 
 /**
- * Index of the nearest enterable door within INTERACT_DISTANCE, or null.
- * Outdoors only — used by GameRig to drive the "Press E to enter" prompt.
+ * Highest walkable surface under a point: terrain, station platform tops +
+ * access stairs, coach floors (incl. doorway bridge plates). Elevated
+ * surfaces only catch bodies above them.
  */
-export function nearestDoor(world: GameWorld): number | null {
-  if (world.mode !== "walk" || world.interior !== null) return null;
-  let best: number | null = null;
-  let bestD = INTERACT_DISTANCE;
-  for (let i = 0; i < BUILDING_DOORS.length; i++) {
-    const d = BUILDING_DOORS[i];
-    const dist = Math.hypot(world.playerPos.x - d.x, world.playerPos.z - d.z);
-    if (dist < bestD) {
-      bestD = dist;
-      best = i;
+export function surfaceY(x: number, z: number, py: number): number {
+  let gy = groundHeight(x, z);
+  const pf = platformTopAt(x, z, py);
+  if (pf !== null) gy = Math.max(gy, pf);
+  const st = stairTopAt(x, z, py);
+  if (st !== null) gy = Math.max(gy, st);
+  const cf = coachFloorAt(x, z);
+  if (cf !== null && py > cf - 0.6) gy = Math.max(gy, cf);
+  return gy;
+}
+
+/**
+ * Ballistic crash flight: semi-implicit Euler under GRAVITY, map-edge
+ * clamped. A hard slam (vy past CRASH_BOUNCE_VY) bounces once, damped;
+ * otherwise the rider lands, stops, and is dazed (stun scales with slam).
+ */
+function updateCrashFlight(world: GameWorld, step: number) {
+  world.crashVel.y -= GRAVITY * step;
+  world.playerPos.x += world.crashVel.x * step;
+  world.playerPos.y += world.crashVel.y * step;
+  world.playerPos.z += world.crashVel.z * step;
+  // Fast phase advance drives the airborne flail animation in Player.tsx.
+  world.walkPhase += step * 14;
+  const B = WORLD_HALF;
+  world.playerPos.x = Math.min(B, Math.max(-B, world.playerPos.x));
+  world.playerPos.z = Math.min(B, Math.max(-B, world.playerPos.z));
+  const gy = surfaceY(world.playerPos.x, world.playerPos.z, world.playerPos.y);
+  if (world.playerPos.y <= gy) {
+    world.playerPos.y = gy;
+    const slam = -world.crashVel.y;
+    if (slam > CRASH_BOUNCE_VY) {
+      world.crashVel.y = slam * CRASH_BOUNCE_KEEP;
+      world.crashVel.x *= 0.5;
+      world.crashVel.z *= 0.5;
+      world.crashSpin *= 0.5;
+    } else {
+      world.crashFlying = false;
+      world.crashVel.set(0, 0, 0);
+      world.crashSpin = 0;
+      world.playerVelY = 0;
+      world.playerSpeed = 0;
+      world.playerMoving = false;
+      world.stun = Math.min(CRASH_STUN_BASE + slam * CRASH_STUN_RATE, CRASH_STUN_MAX);
     }
   }
-  return best;
 }
 
 export function updateOnFoot(world: GameWorld, dt: number) {
   const { keys } = world;
   const step = Math.min(dt, 1 / 20);
+
+  // Crash flight bypasses all locomotion until landing.
+  if (world.crashFlying) {
+    updateCrashFlight(world, step);
+    return;
+  }
+  if (world.stun > 0) world.stun = Math.max(0, world.stun - step);
+  const stunned = world.stun > 0;
 
   // Camera-relative input direction.
   const fwdX = Math.sin(world.camYaw);
@@ -110,13 +111,14 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   let dirX = fwdX * inZ + rightX * inX;
   let dirZ = fwdZ * inZ + rightZ * inX;
   const len = Math.hypot(dirX, dirZ);
-  const moving = len > 0.01;
+  const moving = len > 0.01 && !stunned;
   if (moving) {
     dirX /= len;
     dirZ /= len;
+  } else {
+    dirX = 0;
+    dirZ = 0;
   }
-
-  const inside = world.interior !== null;
 
   const running = keys.run && inZ > 0;
   const targetSpeed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
@@ -133,52 +135,44 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   world.playerPos.x += dirX * world.playerSpeed * step;
   world.playerPos.z += dirZ * world.playerSpeed * step;
 
-  if (inside) {
-    // Interior: flat floor at y=0, clamp to the room walls.
-    world.playerPos.y = 0;
+  // Ride along when standing inside a moving coach (applied before input
+  // so WASD stays relative to the car).
+  const carry = carryDelta(world.playerPos.x, world.playerPos.z);
+  world.playerPos.x += carry.dx;
+  world.playerPos.z += carry.dz;
+
+  // Shoreline: the island ends at the map edge.
+  const B = WORLD_HALF;
+  world.playerPos.x = Math.min(B, Math.max(-B, world.playerPos.x));
+  world.playerPos.z = Math.min(B, Math.max(-B, world.playerPos.z));
+
+  // Ground: terrain, station platform tops + access stairs, coach
+  // floors (incl. doorway bridge plates). Elevated surfaces only catch
+  // players above them.
+  const gy = surfaceY(world.playerPos.x, world.playerPos.z, world.playerPos.y);
+
+  // Jump (Space doubles as the bike brake, which is unused on foot).
+  if (keys.brake && world.playerVelY === 0 && !stunned) world.playerVelY = 7.5;
+
+  // Designed-terrain ground (kept for future ramps/jumps).
+  world.playerVelY -= GRAVITY * step;
+  world.playerPos.y += world.playerVelY * step;
+  if (world.playerPos.y <= gy) {
+    world.playerPos.y = gy;
     world.playerVelY = 0;
-    const room = clampToRoom(world.playerPos.x, world.playerPos.z, 0.5);
-    world.playerPos.x = room.x;
-    world.playerPos.z = room.z;
-  } else {
-    // Ride along when standing inside a moving coach (applied before input
-    // so WASD stays relative to the car).
-    const carry = carryDelta(world.playerPos.x, world.playerPos.z);
-    world.playerPos.x += carry.dx;
-    world.playerPos.z += carry.dz;
-
-    // Shoreline: the island ends at the map edge.
-    const B = WORLD_HALF;
-    world.playerPos.x = Math.min(B, Math.max(-B, world.playerPos.x));
-    world.playerPos.z = Math.min(B, Math.max(-B, world.playerPos.z));
-
-    // Ground: terrain, station platform tops, coach floors (incl. doorway
-    // bridge plates). Elevated surfaces only catch players above them.
-    let gy = groundHeight(world.playerPos.x, world.playerPos.z);
-    const pf = platformTopAt(world.playerPos.x, world.playerPos.z, world.playerPos.y);
-    if (pf !== null) gy = Math.max(gy, pf);
-    const cf = coachFloorAt(world.playerPos.x, world.playerPos.z);
-    if (cf !== null && world.playerPos.y > cf - 0.6) gy = Math.max(gy, cf);
-
-    // Jump (Space doubles as the bike brake, which is unused on foot).
-    if (keys.brake && world.playerVelY === 0) world.playerVelY = 7.5;
-
-    // Designed-terrain ground (kept for future ramps/jumps).
-    world.playerVelY -= GRAVITY * step;
-    world.playerPos.y += world.playerVelY * step;
-    if (world.playerPos.y <= gy) {
-      world.playerPos.y = gy;
-      world.playerVelY = 0;
-    }
-
-    const fixed = collideWorld(world.playerPos.x, world.playerPos.z, 0.5);
-    world.playerPos.x = fixed.x;
-    world.playerPos.z = fixed.z;
-    // Don't stand through the shuttle train.
-    const tf = collideTrain(world.playerPos.x, world.playerPos.z, 0.5);
-    world.playerPos.x = tf.x;
-    world.playerPos.z = tf.z;
   }
+
+  const fixed = collideWorld(world.playerPos.x, world.playerPos.z);
+  world.playerPos.x = fixed.x;
+  world.playerPos.z = fixed.z;
+  // Don't stand through the shuttle train.
+  const tf = collideTrain(world.playerPos.x, world.playerPos.z, 0.5);
+  world.playerPos.x = tf.x;
+  world.playerPos.z = tf.z;
+  // Station walls, posts and furniture are solid (stairs stay walkable).
+  const sc = collideStation(world.playerPos.x, world.playerPos.z, 0.5, world.playerPos.y);
+  world.playerPos.x = sc.x;
+  world.playerPos.z = sc.z;
 
   // Walk-cycle phase for limb animation.
   if (world.playerMoving) {

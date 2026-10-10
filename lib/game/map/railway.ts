@@ -1,8 +1,10 @@
 // Tamil Nadu railways: one shuttle consist per line, all-stop dwelling.
-// Lines are data (stations + dwell config); each line builds a chained
-// quadratic curve through its stations with inland-biased bows. Pure data +
-// math (no React/Three at runtime, except a type-only GameWorld for the
-// sim). Meshes live in components/game/{Railway,Train}.tsx.
+// Lines are data (stations + dwell config); each line is a smooth
+// centripetal Catmull-Rom spline through its stations, straightened
+// through every station so rails run on a true line under the stopped
+// consist and its platform. Pure data + math (no React/Three at runtime,
+// except a type-only GameWorld for the sim). Meshes live in
+// components/game/scene/Railway.tsx + vehicles/train/Train.tsx.
 
 import { latLonToGame } from "./tamilnadu";
 import { groundHeight } from "./terrain";
@@ -82,30 +84,46 @@ export interface BuiltLine {
   cum: number[];
   /** Full path length (buffers included). */
   length: number;
-  /** Head-travel bounds: first/last station arc positions. */
+  /** Head-travel bounds: first/last station arc positions ± half consist
+   * (dwells center the consist, so the head stops half a length past). */
   headMin: number;
   headMax: number;
 }
 
-const CURVE_BEND = 0.06; // lateral bow as a fraction of leg distance
+const STATION_STRAIGHT_FEATHER = 80;
 /** Straight buffer stubs past each terminus so dwelling/departing consists
  * (≤93.5 m) never clamp onto the path ends. */
 const BUFFER_M = 120;
 
-function quadPoint(
-  ax: number,
-  az: number,
-  cx: number,
-  cz: number,
-  bx: number,
-  bz: number,
-  t: number,
-): { x: number; z: number } {
-  const u = 1 - t;
-  return {
-    x: u * u * ax + 2 * u * t * cx + t * t * bx,
-    z: u * u * az + 2 * u * t * cz + t * t * bz,
+interface XZ {
+  x: number;
+  z: number;
+}
+
+/** Centripetal Catmull-Rom point for span p1→p2 at t∈[0,1] (no overshoot
+ * on sharp station corners, tangent-continuous through every station). */
+function catmullRom(p0: XZ, p1: XZ, p2: XZ, p3: XZ, t: number): XZ {
+  const d = (a: XZ, b: XZ) => Math.hypot(b.x - a.x, b.z - a.z);
+  const t0 = 0;
+  const t1 = t0 + Math.pow(d(p0, p1), 0.5);
+  const t2 = t1 + Math.pow(d(p1, p2), 0.5);
+  const t3 = t2 + Math.pow(d(p2, p3), 0.5);
+  const tt = t1 + t * (t2 - t1);
+  const mix = (a: XZ, b: XZ, ta: number, tb: number): XZ => {
+    const k = tb > ta ? (tt - ta) / (tb - ta) : 0;
+    return { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k };
   };
+  const A1 = mix(p0, p1, t0, t1);
+  const A2 = mix(p1, p2, t1, t2);
+  const A3 = mix(p2, p3, t2, t3);
+  const B1 = mix(A1, A2, t0, t2);
+  const B2 = mix(A2, A3, t1, t3);
+  return mix(B1, B2, t1, t2);
+}
+
+function smoothstep01(k: number): number {
+  const c = Math.min(1, Math.max(0, k));
+  return c * c * (3 - 2 * c);
 }
 
 function buildLine(def: LineDef): BuiltLine {
@@ -119,34 +137,20 @@ function buildLine(def: LineDef): BuiltLine {
       cum.push(cum[cum.length - 1] + Math.hypot(p.x - q.x, p.z - q.z));
     }
   };
+  const at = (i: number) => pts[Math.min(pts.length - 1, Math.max(0, i))];
   const jointS: number[] = [0];
-  for (let leg = 0; leg < pts.length - 1; leg++) {
-    const a = pts[leg];
-    const b = pts[leg + 1];
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const dist = Math.hypot(dx, dz);
-    // Control point bowed sideways; pick the side closer to the state
-    // center (game origin) so curves stay inland, off the sea.
-    const nx = -dz / dist;
-    const nz = dx / dist;
-    const mx = (a.x + b.x) / 2;
-    const mz = (a.z + b.z) / 2;
-    const bow = dist * CURVE_BEND;
-    const c1x = mx + nx * bow;
-    const c1z = mz + nz * bow;
-    const c2x = mx - nx * bow;
-    const c2z = mz - nz * bow;
-    const inland1 = c1x * c1x + c1z * c1z < mx * mx + mz * mz;
-    const cx = inland1 ? c1x : c2x;
-    const cz = inland1 ? c1z : c2z;
+  for (let span = 0; span < pts.length - 1; span++) {
+    const p0 = at(span - 1);
+    const p1 = at(span);
+    const p2 = at(span + 1);
+    const p3 = at(span + 2);
+    const dist = Math.hypot(p2.x - p1.x, p2.z - p1.z);
     const samples = Math.min(256, Math.max(24, Math.round(dist / 13)));
-    for (let i = leg === 0 ? 0 : 1; i <= samples; i++) {
-      push(quadPoint(a.x, a.z, cx, cz, b.x, b.z, i / samples));
+    for (let i = span === 0 ? 0 : 1; i <= samples; i++) {
+      push(catmullRom(p0, p1, p2, p3, i / samples));
     }
     jointS.push(cum[cum.length - 1]);
   }
-  const length = cum[cum.length - 1];
   // Buffer stubs: straight extensions past both ends along the end
   // tangents, so car offsets trailing past a terminus stay on the path.
   const t0x = path[1].x - path[0].x;
@@ -180,15 +184,53 @@ function buildLine(def: LineDef): BuiltLine {
     const pose = trackPointAtLength(full, fullCum, fullCum[fullCum.length - 1], shift + jointS[i]);
     return { ...s, x: pose.x, z: pose.z, yaw: pose.yaw, s: shift + jointS[i] };
   });
+  // Straighten the track through every station: pin samples near each
+  // station onto its tangent line (full strength under the platform,
+  // smoothstep-feathered beyond) so rails, sleepers, the stopped consist
+  // and the platform all share one true line at stops.
+  const halfPlat = (consistLength(def.coachCount) + 30) / 2;
+  const outer = halfPlat + STATION_STRAIGHT_FEATHER;
+  for (const st of stations) {
+    const tx = Math.sin(st.yaw);
+    const tz = Math.cos(st.yaw);
+    for (let i = 0; i < full.length; i++) {
+      const d = fullCum[i] - st.s;
+      const ad = Math.abs(d);
+      if (ad >= outer) continue;
+      const w = ad <= halfPlat ? 1 : 1 - smoothstep01((ad - halfPlat) / STATION_STRAIGHT_FEATHER);
+      const px = st.x + tx * d;
+      const pz = st.z + tz * d;
+      full[i] = { x: full[i].x + (px - full[i].x) * w, z: full[i].z + (pz - full[i].z) * w };
+    }
+  }
+  // Re-accumulate arc lengths, then re-pin each station's arc position to
+  // its (unchanged) location so dwell stops land exactly on the line.
+  fullCum[0] = 0;
+  for (let i = 1; i < full.length; i++) {
+    fullCum[i] = fullCum[i - 1] + Math.hypot(full[i].x - full[i - 1].x, full[i].z - full[i - 1].z);
+  }
+  for (const st of stations) {
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < full.length; i++) {
+      const dd = Math.hypot(full[i].x - st.x, full[i].z - st.z);
+      if (dd < bestD) {
+        bestD = dd;
+        best = i;
+      }
+    }
+    st.s = fullCum[best];
+  }
   const fullLen = fullCum[fullCum.length - 1];
+  const halfConsist = consistLength(def.coachCount) / 2;
   return {
     def,
     stations,
     path: full,
     cum: fullCum,
     length: fullLen,
-    headMin: shift,
-    headMax: shift + length,
+    headMin: stations[0].s - halfConsist,
+    headMax: stations[stations.length - 1].s + halfConsist,
   };
 }
 
@@ -268,12 +310,18 @@ export interface TrainSimState {
   x: number;
   z: number;
   angle: number;
+  /** Station index of the last dwell (skipped until another station
+   * dwells — the reverse-direction target of the same station lies a
+   * consist-length behind and must not re-trigger on departure). */
+  lastStop: number;
 }
 
 export function initialTrainState(): TrainSimState[] {
   return LINES.map((d) => {
     const r = getLine(d.id);
-    return { line: d.id, s: r.headMin, dir: 1 as const, wait: 2, x: 0, z: 0, angle: 0 };
+    // Start docked: consist centered on the first station, ready to board.
+    const s = r.stations[0].s + consistLength(d.coachCount) / 2;
+    return { line: d.id, s, dir: 1 as const, wait: 2, x: 0, z: 0, angle: 0, lastStop: -1 };
   });
 }
 
@@ -291,6 +339,9 @@ const stoppedLines = new Set<string>();
 
 function stepTrain(t: TrainSimState, dt: number): void {
   const r = getLine(t.line);
+  // Dwell with the consist CENTER on the station (not the head), so every
+  // doorway faces the platform and boarding is a level step anywhere.
+  const C = consistLength(r.def.coachCount);
   if (t.wait > 0) {
     t.wait = Math.max(0, t.wait - dt);
   } else {
@@ -298,12 +349,14 @@ function stepTrain(t: TrainSimState, dt: number): void {
     t.s += t.dir * TRAIN_SPEED * dt;
     // Halt at any station crossed this step (termini also flip direction).
     for (let i = 0; i < r.stations.length; i++) {
-      const ss = r.stations[i].s;
+      if (i === t.lastStop) continue;
+      const target = r.stations[i].s + t.dir * (C / 2);
       const crossed =
-        t.dir > 0 ? prev < ss && t.s >= ss : prev > ss && t.s <= ss;
+        t.dir > 0 ? prev < target && t.s >= target : prev > target && t.s <= target;
       if (crossed) {
-        t.s = ss;
+        t.s = target;
         t.wait = r.def.dwell;
+        t.lastStop = i;
         if (i === 0) t.dir = 1;
         else if (i === r.stations.length - 1) t.dir = -1;
         break;
@@ -394,9 +447,38 @@ export function collideTrain(
       const alz = Math.abs(lz);
       if (alx > TRAIN_HALF_W + radius || alz > halfLen + radius) continue;
       const doorsOpen = stopped && i > 0 && inDoorBand(lz, radius * 0.5);
-      // Side walls (skipped at open doorways so players walk through).
+      // Side walls: solid from the outside (except open doorways), but
+      // free once inside so riders can walk the cabin and ride standing.
+      // Crossing outward is bounced back unless through an open doorway
+      // (so nobody falls out of a moving train).
       const sidePen = TRAIN_HALF_W + radius - alx;
       const endPen = halfLen + radius - alz;
+      const insideShell = alx <= TRAIN_HALF_W;
+      // Open gangway between cars (|lx| < 0.55).
+      const inGangway = alx < 0.55 + radius * 0.5;
+      if (insideShell) {
+        const atWall = alx > TRAIN_HALF_W - radius;
+        if (atWall && !(doorsOpen && inDoorBand(lz, 0))) {
+          const s = lx >= 0 ? 1 : -1;
+          const rx = Math.cos(c.yaw);
+          const rz = -Math.sin(c.yaw);
+          px = c.x + rx * s * (TRAIN_HALF_W - radius);
+          pz = c.z + rz * s * (TRAIN_HALF_W - radius);
+        }
+        // End walls hold from the inside too (gangway stays walkable).
+        const loc = carLocal(c, px, pz);
+        if (!inGangway && Math.abs(loc.lz) > halfLen - radius) {
+          const s = loc.lz >= 0 ? 1 : -1;
+          const nlz = s * (halfLen - radius);
+          const rx2 = Math.cos(c.yaw);
+          const rz2 = -Math.sin(c.yaw);
+          const fx2 = Math.sin(c.yaw);
+          const fz2 = Math.cos(c.yaw);
+          px = c.x + rx2 * loc.lx + fx2 * nlz;
+          pz = c.z + rz2 * loc.lx + fz2 * nlz;
+        }
+        continue;
+      }
       if (!doorsOpen && sidePen > 0 && sidePen <= endPen && alz < halfLen + radius) {
         const s = lx >= 0 ? 1 : -1;
         const rx = Math.cos(c.yaw);
@@ -405,8 +487,8 @@ export function collideTrain(
         pz = c.z + rz * s * (TRAIN_HALF_W + radius);
         continue;
       }
-      // End walls always solid.
-      if (endPen > 0 && endPen < sidePen && alx < TRAIN_HALF_W + radius) {
+      // End walls solid except the open gangway (|lx| < 0.55) between cars.
+      if (!inGangway && endPen > 0 && endPen < sidePen && alx < TRAIN_HALF_W + radius) {
         const s = lz >= 0 ? 1 : -1;
         const fx = Math.sin(c.yaw);
         const fz = Math.cos(c.yaw);
@@ -475,7 +557,9 @@ export function stationPlatforms(): StationPlatform[] {
         yaw: st.yaw,
         halfW: 2.5,
         halfL: platLen / 2,
-        topY: groundHeight(px, pz) + 1.1,
+        // Flush with the coach floor (COACH_FLOOR_Y) so boarding is a
+        // level step across the bridge plates instead of a jump.
+        topY: groundHeight(px, pz) + COACH_FLOOR_Y,
       });
     }
   }
@@ -494,6 +578,140 @@ export function platformTopAt(x: number, z: number, py: number): number | null {
     if (py > p.topY - 0.5 && (best === null || p.topY > best)) best = p.topY;
   }
   return best;
+}
+
+export interface PlatformStep {
+  x: number;
+  z: number;
+  yaw: number;
+  halfW: number;
+  halfL: number;
+  topY: number;
+}
+
+/**
+ * Walkable stair treads at both ends of every platform (mirrors the
+ * visual steps in Railway.tsx: outer tread +0.32, inner tread +0.63 over
+ * local ground, then the 0.95 platform top). Lets players climb without
+ * jumping.
+ */
+export function platformSteps(): PlatformStep[] {
+  const out: PlatformStep[] = [];
+  for (const line of getLines()) {
+    const platLen = consistLength(line.def.coachCount) + 30;
+    for (const st of line.stations) {
+      const rx = Math.cos(st.yaw);
+      const rz = -Math.sin(st.yaw);
+      const px = st.x + rx * 4.6;
+      const pz = st.z + rz * 4.6;
+      const fx = Math.sin(st.yaw);
+      const fz = Math.cos(st.yaw);
+      for (const e of [1, -1]) {
+        const outer: PlatformStep = {
+          x: px + fx * e * (platLen / 2 + 0.85),
+          z: pz + fz * e * (platLen / 2 + 0.85),
+          yaw: st.yaw,
+          halfW: 1.5,
+          halfL: 0.45,
+          topY: 0,
+        };
+        outer.topY = groundHeight(outer.x, outer.z) + 0.32;
+        const inner: PlatformStep = {
+          x: px + fx * e * (platLen / 2 + 0.3),
+          z: pz + fz * e * (platLen / 2 + 0.3),
+          yaw: st.yaw,
+          halfW: 1.5,
+          halfL: 0.45,
+          topY: 0,
+        };
+        inner.topY = groundHeight(inner.x, inner.z) + 0.63;
+        out.push(outer, inner);
+      }
+    }
+  }
+  return out;
+}
+
+/** Step top under a point (same mount rule as platforms). */
+export function stairTopAt(x: number, z: number, py: number): number | null {
+  let best: number | null = null;
+  for (const s of platformSteps()) {
+    const dx = x - s.x;
+    const dz = z - s.z;
+    const lx = Math.cos(s.yaw) * dx - Math.sin(s.yaw) * dz;
+    const lz = Math.sin(s.yaw) * dx + Math.cos(s.yaw) * dz;
+    if (Math.abs(lx) > s.halfW || Math.abs(lz) > s.halfL) continue;
+    if (py > s.topY - 0.5 && (best === null || s.topY > best)) best = s.topY;
+  }
+  return best;
+}
+
+/**
+ * Station solid collision: platform side walls (skipped when standing on
+ * top), shelter posts, benches, sign posts and lamps as circle colliders
+ * (skipped when above them). Keeps players/bikes from phasing through
+ * the station; stairs remain the way up.
+ */
+export function collideStation(
+  x: number,
+  z: number,
+  radius: number,
+  py: number,
+): { x: number; z: number } {
+  let px = x;
+  let pz = z;
+  for (const p of stationPlatforms()) {
+    // Side walls.
+    if (py <= p.topY - 0.4) {
+      const dx = px - p.x;
+      const dz = pz - p.z;
+      const lx = Math.cos(p.yaw) * dx - Math.sin(p.yaw) * dz;
+      const lz = Math.sin(p.yaw) * dx + Math.cos(p.yaw) * dz;
+      const penX = p.halfW + radius - Math.abs(lx);
+      const penZ = p.halfL + radius - Math.abs(lz);
+      if (penX > 0 && penZ > 0) {
+        if (penX < penZ) {
+          const s = lx >= 0 ? 1 : -1;
+          const nlx = s * (p.halfW + radius);
+          px = p.x + Math.cos(p.yaw) * nlx + Math.sin(p.yaw) * lz;
+          pz = p.z - Math.sin(p.yaw) * nlx + Math.cos(p.yaw) * lz;
+        } else {
+          const s = lz >= 0 ? 1 : -1;
+          const nlz = s * (p.halfL + radius);
+          px = p.x + Math.cos(p.yaw) * lx + Math.sin(p.yaw) * nlz;
+          pz = p.z - Math.sin(p.yaw) * lx + Math.cos(p.yaw) * nlz;
+        }
+      }
+    }
+    // Prop circles in platform-local coords: [lx, lz, radius, topLocalY].
+    const gy = p.topY - COACH_FLOOR_Y;
+    const props: Array<[number, number, number, number]> = [
+      [-1.5, -6, 0.35, 3.4],
+      [1.5, -6, 0.35, 3.4],
+      [-1.5, 6, 0.35, 3.4],
+      [1.5, 6, 0.35, 3.4],
+      [0.8, -3, 0.85, 1.7],
+      [0.8, 3, 0.85, 1.7],
+      [-2.6, -2.4, 0.3, 4.6],
+      [-2.6, 2.4, 0.3, 4.6],
+      [3.2, -14, 0.35, 6.0],
+      [3.2, 14, 0.35, 6.0],
+    ];
+    for (const [olx, olz, cr, top] of props) {
+      if (py > gy + top - 0.4) continue;
+      const wx = p.x + Math.cos(p.yaw) * olx + Math.sin(p.yaw) * olz;
+      const wz = p.z - Math.sin(p.yaw) * olx + Math.cos(p.yaw) * olz;
+      const dx = px - wx;
+      const dz = pz - wz;
+      const d = Math.hypot(dx, dz);
+      const min = cr + radius;
+      if (d < min && d > 1e-4) {
+        px = wx + (dx / d) * min;
+        pz = wz + (dz / d) * min;
+      }
+    }
+  }
+  return { x: px, z: pz };
 }
 
 // --- Boarding + seat math (pure functions of live car poses) ---

@@ -37,6 +37,13 @@ export interface MapDrawOptions {
   labelFont?: string;
   /** Railway line + stations + live train marker. */
   railway?: RailwayMapData;
+  /** Thanjavur highlight rings in game meters (drawn filled + colored). */
+  highlightRings?: { x: number; z: number }[][];
+  /** Thanjavur label anchor in game meters. */
+  highlightLabel?: { name: string; x: number; z: number } | null;
+  /** Fill / stroke for the highlight (defaults to warm amber). */
+  highlightFill?: string;
+  highlightStroke?: string;
 }
 
 /** Screen-space heading of the player marker (shared by renderer + pan math). */
@@ -123,6 +130,12 @@ export function renderMap(
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const L of opts.districtLabels) {
+      // Skip the highlighted district here — it gets its own pill label below.
+      if (opts.highlightLabel && L.name.toLowerCase() === opts.highlightLabel.name.toLowerCase()) {
+        const same =
+          Math.abs(L.x - opts.highlightLabel.x) < 1 && Math.abs(L.z - opts.highlightLabel.z) < 1;
+        if (same) continue;
+      }
       const [mx, mz] = toMap(L.x, L.z);
       if (mx < 28 || mx > size - 28 || mz < 16 || mz > size - 16) continue;
       ctx.lineWidth = 3;
@@ -132,6 +145,60 @@ export function renderMap(
       ctx.fillText(L.name, mx, mz);
     }
     ctx.textBaseline = "alphabetic";
+  }
+
+  // Thanjavur highlight: colored fill + bold border, clipped to the land.
+  if (opts.highlightRings && opts.highlightRings.length > 0) {
+    const fill = opts.highlightFill ?? "rgba(249,171,0,0.38)";
+    const stroke = opts.highlightStroke ?? "#e8710a";
+    ctx.save();
+    traceTN();
+    ctx.clip();
+    for (const ring of opts.highlightRings) {
+      ctx.beginPath();
+      for (let i = 0; i < ring.length; i++) {
+        const [mx, mz] = toMap(ring[i].x, ring[i].z);
+        if (i === 0) ctx.moveTo(mx, mz);
+        else ctx.lineTo(mx, mz);
+      }
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2.5;
+      // Crisp border at any zoom + soft outer glow so it reads on green.
+      ctx.shadowColor = "rgba(232,113,10,0.55)";
+      ctx.shadowBlur = 6;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      // Inner hairline for a clean cartographic edge.
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Pill label so Thanjavur reads even when zoomed out.
+    if (opts.highlightLabel) {
+      const [lx, ly] = toMap(opts.highlightLabel.x, opts.highlightLabel.z);
+      if (lx > 40 && lx < size - 40 && ly > 20 && ly < size - 20) {
+        ctx.font = "800 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const w = ctx.measureText(opts.highlightLabel.name).width + 18;
+        const h = 20;
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(lx - w / 2, ly - h / 2, w, h, 10);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#b06000";
+        ctx.fillText(opts.highlightLabel.name, lx, ly + 0.5);
+        ctx.textBaseline = "alphabetic";
+      }
+    }
   }
 
   // 1000 m grid (big map), with bolder lines on 4 km chunk boundaries.

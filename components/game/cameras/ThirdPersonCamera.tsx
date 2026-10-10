@@ -23,6 +23,8 @@ import {
   type RideMode,
 } from "@/lib/game/gameConstants";
 import { getFocusPoint, type GameWorld } from "@/lib/game/state";
+import { groundHeight } from "@/lib/game/map/terrain";
+import { coachFloorAt, platformTopAt } from "@/lib/game/map/railway";
 
 const LOCK_SENSITIVITY = 0.0025;
 const HOLD_SENSITIVITY = 0.0042;
@@ -179,16 +181,14 @@ export default function ThirdPersonCamera({
       if (world.mode === "train") worldRef.current.camDistance = 2.4;
     }
     const isTrain = world.mode === "train";
-    const dist = world.interior !== null
-      ? 4.2 // tight framing so the camera stays inside the room
-      : isTrain
-        ? Math.min(Math.max(world.camDistance, 1.2), 3.0) // stay inside the coach
-        : worldRef.current.camManualZoom
-          ? world.camDistance
-          : world.mode === "ride"
-            ? CAM_RIDE_DISTANCE
-            : CAM_DISTANCE;
-    if (world.interior === null && !isTrain) worldRef.current.camDistance = dist;
+    const dist = isTrain
+      ? Math.min(Math.max(world.camDistance, 1.2), 3.0) // stay inside the coach
+      : worldRef.current.camManualZoom
+        ? world.camDistance
+        : world.mode === "ride"
+          ? CAM_RIDE_DISTANCE
+          : CAM_DISTANCE;
+    if (!isTrain) worldRef.current.camDistance = dist;
 
     const cp = Math.cos(world.camPitch);
     const sp = Math.sin(world.camPitch);
@@ -199,8 +199,14 @@ export default function ThirdPersonCamera({
       focus.y + camH + sp * dist,
       focus.z - Math.cos(world.camYaw) * cp * dist,
     );
-    // Never clip below the terrain.
-    if (desired.y < 0.6) desired.y = 0.6;
+    // Never clip below the world: ride on top of the terrain, station
+    // platforms and coach floors instead of the old fixed 0.6 m plane
+    // (the island sits at ~2 m, so that always buried the camera).
+    const camGround = groundHeight(desired.x, desired.z);
+    const camPlat = platformTopAt(desired.x, desired.z, desired.y);
+    const camCoach = coachFloorAt(desired.x, desired.z);
+    const camMin = Math.max(camGround, camPlat ?? -Infinity, camCoach ?? -Infinity) + 0.35;
+    if (desired.y < camMin) desired.y = camMin;
 
     // Rigid follow: snap straight to the desired position.
     camera.position.copy(desired);

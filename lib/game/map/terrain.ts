@@ -35,9 +35,9 @@ export const TN_LAND_H = 2.0;
 export const TN_SEA_H = -5.0;
 export const TN_BEACH_H = 0.4;
 
-/** Paint layers: grass, dirt, sand, rock, asphalt. */
+/** Paint layers: grass, alluvial soil, sand, rock, asphalt. */
 export type PaintLayer = 0 | 1 | 2 | 3 | 4;
-export const PAINT_COLORS = ["#7fbf5f", "#9a7d55", "#d9c48f", "#8d8d94", "#3f4448"];
+export const PAINT_COLORS = ["#7fbf5f", "#77573a", "#d9c48f", "#8d8d94", "#3f4448"];
 
 export interface TerrainData {
   heights: Float32Array;
@@ -95,6 +95,93 @@ export function createTerrain(): TerrainData {
 export function getTerrain(): TerrainData {
   if (!terrain) terrain = createTerrain();
   return terrain;
+}
+
+let terrainProgress = 0;
+let terrainBuild: Promise<TerrainData> | null = null;
+
+/** 0..1 build progress for the loading scene. */
+export function getTerrainProgress(): number {
+  return terrainProgress;
+}
+
+/**
+ * Chunked async build of the same heightfield (row slices yield to the
+ * event loop so the loading scene can paint progress). Safe to call twice —
+ * concurrent callers share one promise. Resolves with the cached terrain.
+ */
+export function buildTerrainAsync(onProgress?: (p: number) => void): Promise<TerrainData> {
+  if (terrain) {
+    terrainProgress = 1;
+    onProgress?.(1);
+    return Promise.resolve(terrain);
+  }
+  if (terrainBuild) return terrainBuild;
+  terrainBuild = (async () => {
+    setTNWorldSize(WORLD_SIZE);
+    const heights = new Float32Array(TERRAIN_RES * TERRAIN_RES);
+    const paint = new Uint8Array(TERRAIN_RES * TERRAIN_RES);
+    const inside = new Uint8Array(TERRAIN_RES * TERRAIN_RES);
+    const SLICES = 12;
+    const rowsPer = Math.ceil(TERRAIN_RES / SLICES);
+    const yieldUI = () => new Promise<void>((r) => setTimeout(r, 0));
+    // First pass: inside/outside mask.
+    for (let s = 0; s < SLICES; s++) {
+      const z0 = s * rowsPer;
+      const z1 = Math.min(TERRAIN_RES, z0 + rowsPer);
+      for (let iz = z0; iz < z1; iz++) {
+        for (let ix = 0; ix < TERRAIN_RES; ix++) {
+          const wx = ix * CELL - WORLD_HALF;
+          const wz = iz * CELL - WORLD_HALF;
+          const idx = iz * TERRAIN_RES + ix;
+          const inn = isInsideTN(wx, wz) ? 1 : 0;
+          inside[idx] = inn;
+          heights[idx] = inn ? TN_LAND_H : TN_SEA_H;
+          paint[idx] = inn ? 0 : 2;
+        }
+      }
+      terrainProgress = (0.5 * (s + 1)) / SLICES;
+      onProgress?.(terrainProgress);
+      await yieldUI();
+    }
+    // Second pass: feather the shoreline by one cell so bikes don't hit a
+    // cliff wall at the TN border. Mixed-neighbourhood cells become beach.
+    for (let s = 0; s < SLICES; s++) {
+      const z0 = s * rowsPer;
+      const z1 = Math.min(TERRAIN_RES, z0 + rowsPer);
+      for (let iz = z0; iz < z1; iz++) {
+        for (let ix = 0; ix < TERRAIN_RES; ix++) {
+          const idx = iz * TERRAIN_RES + ix;
+          const inn = inside[idx] === 1;
+          let mixed = false;
+          for (let oz = -1; oz <= 1 && !mixed; oz++) {
+            for (let ox = -1; ox <= 1; ox++) {
+              if (ox === 0 && oz === 0) continue;
+              const jx = ix + ox;
+              const jz = iz + oz;
+              if (jx < 0 || jz < 0 || jx >= TERRAIN_RES || jz >= TERRAIN_RES) continue;
+              if ((inside[jz * TERRAIN_RES + jx] === 1) !== inn) {
+                mixed = true;
+                break;
+              }
+            }
+          }
+          if (mixed) {
+            heights[idx] = TN_BEACH_H;
+            paint[idx] = 2;
+          }
+        }
+      }
+      terrainProgress = 0.5 + (0.5 * (s + 1)) / SLICES;
+      onProgress?.(terrainProgress);
+      await yieldUI();
+    }
+    terrain = { heights, paint };
+    terrainProgress = 1;
+    onProgress?.(1);
+    return terrain;
+  })();
+  return terrainBuild;
 }
 
 export function resetTerrain() {

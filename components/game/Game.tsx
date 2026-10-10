@@ -27,6 +27,7 @@ import Railway from "./scene/Railway";
 import Train from "./vehicles/train/Train";
 import TrainPrompt from "./prompts/TrainPrompt";
 import { CanvasErrorBoundary, WebGLHelpScreen } from "./system/WebGLSupport";
+import LoadingScene from "./system/LoadingScene";
 import { useKeyboardInput } from "@/lib/game/input";
 import { ensureAudio, setAudioMuted } from "@/lib/game/audio";
 import {
@@ -41,6 +42,14 @@ import {
 } from "@/lib/game/gameConstants";
 import { createInitialWorld, type GameWorld } from "@/lib/game/state";
 import { formatTime, nightFactor } from "@/lib/game/map/time";
+import { buildTerrainAsync, groundHeight } from "@/lib/game/map/terrain";
+import {
+  getQuality,
+  sampleQuality,
+  setQualityMode,
+  subscribeQuality,
+  type QualityMode,
+} from "@/lib/game/quality";
 import { useCurrentDistrict } from "@/lib/game/map/districts";
 import { seatProximity } from "@/lib/game/map/railway";
 
@@ -53,20 +62,32 @@ function GameRig({
   onNearBike,
   onSpeed,
   onTime,
+  onMode,
 }: {
   worldRef: RefObject<GameWorld>;
   onNearBike: (near: boolean) => void;
   onSpeed: (kmh: number) => void;
   onTime: (label: string, night: boolean) => void;
+  onMode: (m: RideMode) => void;
 }) {
   const lastKmh = useRef(-1);
   const lastClock = useRef("");
+  const lastMode = useRef<RideMode>("walk");
   const acc = useRef(0);
 
   useFrame((_, rawDt) => {
+    // FPS sampler for Auto quality (no-ops unless mode is auto).
+    sampleQuality(rawDt);
     const dt = Math.min(rawDt, 0.05);
     const world = worldRef.current;
     if (world.paused) return;
+
+    // Mode can flip inside the sim (bike crash ejects the rider) — mirror
+    // it into React state so HUD/prompts follow.
+    if (world.mode !== lastMode.current) {
+      lastMode.current = world.mode;
+      onMode(world.mode);
+    }
 
     if (world.mode === "walk") {
       const dx = world.playerPos.x - world.bikePos.x;
@@ -106,7 +127,13 @@ function GameRig({
 }
 
 export default function Game() {
-  const worldRef = useRef<GameWorld>(createInitialWorld());
+  // World is created after the async terrain build so the loading scene can
+  // paint progress (creating it eagerly would block on the sync build).
+  // Nothing that touches worldRef mounts until worldReady is set.
+  const worldRef = useRef<GameWorld>(null!);
+  const [loadPct, setLoadPct] = useState(0);
+  const [worldReady, setWorldReady] = useState(false);
+  const [presented, setPresented] = useState(false);
   const [mode, setMode] = useState<RideMode>("walk");
   const [nearBike, setNearBike] = useState(false);
   const [speedKmh, setSpeedKmh] = useState(0);
@@ -119,6 +146,13 @@ export default function Game() {
   // Renderer quality: a WebGL creation failure steps full → minimal (most
   // compatible context flags) → help screen, instead of crashing the page.
   const [glMode, setGlMode] = useState<"full" | "minimal" | "failed">("full");
+  // Perf quality: High = current visuals, Low = dpr 1 + no MSAA + no
+  // shadows. Auto samples FPS and steps down/up (remounts Canvas rarely).
+  const [quality, setQuality] = useState(getQuality);
+  useEffect(
+    () => subscribeQuality(() => setQuality(getQuality())),
+    [],
+  );
 
   const handleCanvasError = useCallback(() => {
     setGlMode((m) => (m === "full" ? "minimal" : "failed"));
@@ -136,6 +170,23 @@ export default function Game() {
   const pausedRef = useRef(false);
 
   useKeyboardInput(worldRef);
+
+  // Boot: build the heightfield in slices (progress paints), create the
+  // world, then mount the scene. The overlay stays up through first-frame
+  // shader compile (see Canvas onCreated) so no blank frame ever shows.
+  useEffect(() => {
+    let cancelled = false;
+    buildTerrainAsync((p) => {
+      if (!cancelled) setLoadPct(Math.round(p * 100));
+    }).then(() => {
+      if (cancelled) return;
+      if (worldRef.current == null) worldRef.current = createInitialWorld();
+      setWorldReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Browsers require a user gesture before audio may start.
   useEffect(() => {
@@ -160,6 +211,11 @@ export default function Game() {
   const handleTime = useCallback((label: string, night: boolean) => {
     setClockLabel(label);
     setIsNight(night);
+  }, []);
+
+  const handleModeSync = useCallback((m: RideMode) => {
+    modeRef.current = m;
+    setMode(m);
   }, []);
 
   const setPaused = useCallback((p: boolean) => {
@@ -200,10 +256,12 @@ export default function Game() {
   const handleRespawn = useCallback(() => {
     const w = worldRef.current;
     w.playerPos.set(...PLAYER_SPAWN);
+    w.playerPos.y = groundHeight(w.playerPos.x, w.playerPos.z);
     w.playerYaw = 0;
     w.playerVelY = 0;
     w.playerSpeed = 0;
     w.bikePos.set(...BIKE_SPAWN);
+    w.bikePos.y = groundHeight(w.bikePos.x, w.bikePos.z);
     w.bikeYaw = BIKE_SPAWN_YAW;
     w.bikeSpeed = 0;
     w.bikeSteer = 0;
@@ -227,6 +285,7 @@ export default function Game() {
   // exit the lock, so P also toggles the menu.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!worldRef.current) return;
       if (e.code === "KeyM" && !e.repeat) {
         // Toggle the fullscreen map — works on foot and while riding.
         // (openMap pauses the sim and clears inputs itself.)
@@ -329,28 +388,43 @@ export default function Game() {
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleMute, setPaused, openMap, closeMap]);
 
+  const lowQ = quality.level === "low";
+
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#bfe3f2] touch-none">
+      {!presented && <LoadingScene pct={worldReady ? 100 : loadPct} />}
       {glMode === "failed" ? (
         <WebGLHelpScreen onRetry={() => setGlMode("full")} />
-      ) : (
+      ) : worldReady ? (
         <CanvasErrorBoundary key={glMode} onError={handleCanvasError}>
           <Canvas
-            shadows={glMode === "full"}
-            dpr={glMode === "full" ? [1, 1.5] : 1}
-            camera={{ fov: 55, near: 0.1, far: 24000, position: [0, 3.5, 7.5] }}
+            // Remount only on glMode change: a fresh context is required to
+            // apply antialias toggles after a real WebGL failure (rare).
+            // Quality level (dpr/shadows) is applied live by R3F with no
+            // remount — remounting here caused the white/blank flash.
+            key={glMode}
+            shadows={glMode === "full" && !lowQ}
+            dpr={glMode === "full" && !lowQ ? [1, 1.5] : 1}
+            camera={{ fov: 55, near: 0.1, far: 9000, position: [0, 3.5, 7.5] }}
             gl={{
               // Minimal EGL requirements: no MSAA, no stencil/alpha buffers,
               // default adapter choice (a forced discrete GPU is a common
               // cause of EGL_NO_CONFIG on broken drivers), software fallback
               // explicitly allowed.
-              antialias: glMode === "full",
+              antialias: glMode === "full" && !lowQ,
               stencil: false,
               alpha: false,
               depth: true,
               failIfMajorPerformanceCaveat: false,
             }}
             style={{ width: "100%", height: "100%" }}
+            onCreated={() => {
+              // Hide the loader only once frames are actually presenting,
+              // covering first-frame shader-compile jank.
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => setPresented(true)),
+              );
+            }}
           >
         <color attach="background" args={[FOG_COLOR]} />
         <fog attach="fog" args={[FOG_COLOR, FOG_NEAR, FOG_FAR]} />
@@ -374,11 +448,12 @@ export default function Game() {
             onNearBike={handleNearBike}
             onSpeed={setSpeedKmh}
             onTime={handleTime}
+            onMode={handleModeSync}
           />
         </Suspense>
           </Canvas>
         </CanvasErrorBoundary>
-      )}
+      ) : null}
 
       <GameHUD
         mode={mode}
@@ -390,26 +465,30 @@ export default function Game() {
         engineOn={engineUi}
         lightsOn={lightsUi}
       />
-      <Speedometer worldRef={worldRef} speedKmh={speedKmh} visible={mode === "ride"} />
-      <>
-        <Minimap
-          worldRef={worldRef}
-          northUp={mapNorthUp}
-          district={district}
-          onToggleOrientation={() => setMapNorthUp((v) => !v)}
-          onOpenMap={openMap}
-        />
-        {mapOpen && (
-          <BigMap
-            worldRef={worldRef}
-            northUp={mapNorthUp}
-            district={district}
-            onClose={closeMap}
-          />
-        )}
-        <GeoReadout worldRef={worldRef} />
-        <DistrictToast district={district} />
-      </>
+      {worldReady && (
+        <>
+          <Speedometer worldRef={worldRef} speedKmh={speedKmh} visible={mode === "ride"} />
+          <>
+            <Minimap
+              worldRef={worldRef}
+              northUp={mapNorthUp}
+              district={district}
+              onToggleOrientation={() => setMapNorthUp((v) => !v)}
+              onOpenMap={openMap}
+            />
+            {mapOpen && (
+              <BigMap
+                worldRef={worldRef}
+                northUp={mapNorthUp}
+                district={district}
+                onClose={closeMap}
+              />
+            )}
+            <GeoReadout worldRef={worldRef} />
+            <DistrictToast district={district} />
+          </>
+        </>
+      )}
 
       {/* Center crosshair while the cursor is captured in mouse-look */}
       {camLocked && (
@@ -425,6 +504,8 @@ export default function Game() {
           onRespawn={handleRespawn}
           mapNorthUp={mapNorthUp}
           onToggleMap={() => setMapNorthUp((v) => !v)}
+          qualityMode={quality.mode}
+          onQualityMode={(m: QualityMode) => setQualityMode(m)}
         />
       )}
     </div>

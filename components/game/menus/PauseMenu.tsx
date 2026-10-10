@@ -1,10 +1,11 @@
 // ESC/P pause menu: Resume, expandable Controls reference, Sound toggle,
-// Respawn. Rendered above everything with its own pointer events while the
-// 3D scene stays frozen behind a blur overlay.
+// Graphics quality, Respawn. Rendered above everything with its own pointer
+// events while the 3D scene stays frozen behind a blur overlay.
 
 "use client";
 
 import { useState } from "react";
+import type { QualityMode } from "@/lib/game/quality";
 
 function Key({ children }: { children: React.ReactNode }) {
   return (
@@ -49,6 +50,8 @@ export default function PauseMenu({
   onRespawn,
   mapNorthUp,
   onToggleMap,
+  qualityMode,
+  onQualityMode,
 }: {
   onResume: () => void;
   muted: boolean;
@@ -56,6 +59,8 @@ export default function PauseMenu({
   onRespawn: () => void;
   mapNorthUp: boolean;
   onToggleMap: () => void;
+  qualityMode: QualityMode;
+  onQualityMode: (m: QualityMode) => void;
 }) {
   const [showControls, setShowControls] = useState(false);
   return (
@@ -111,6 +116,30 @@ export default function PauseMenu({
           <MenuButton onClick={onToggleMute}>
             {muted ? "Unmute sound" : "Mute sound"}
           </MenuButton>
+          <div>
+            <div className="mb-1.5 text-center text-[11px] font-bold tracking-widest text-white/50">
+              GRAPHICS {qualityMode === "auto" ? "(AUTO)" : ""}
+            </div>
+            <div className="flex gap-1.5">
+              {(["auto", "high", "low"] as QualityMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => onQualityMode(m)}
+                  className={`flex-1 rounded-lg border px-2 py-2 text-xs font-bold tracking-wide uppercase transition-colors ${
+                    qualityMode === m
+                      ? "border-amber-300/60 bg-amber-400/90 text-black"
+                      : "border-white/15 bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-center text-[11px] leading-snug text-white/45">
+              Low turns off shadows &amp; extra pixels. Auto steps down if the
+              frame rate drops.
+            </p>
+          </div>
           <MenuButton onClick={onRespawn}>Respawn</MenuButton>
         </div>
       </div>

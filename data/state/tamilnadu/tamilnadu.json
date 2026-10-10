@@ -1,0 +1,627 @@
+{
+  "censusYear": null,
+  "districts": [
+    {
+      "name": "Thiruvallur",
+      "population": null
+    },
+    {
+      "name": "Chennai",
+      "population": null
+    },
+    {
+      "name": "Kancheepuram",
+      "population": null
+    },
+    {
+      "name": "Chengalpattu",
+      "population": null
+    },
+    {
+      "name": "Vellore",
+      "population": null
+    },
+    {
+      "name": "Ranipet",
+      "population": null
+    },
+    {
+      "name": "Tirupathur",
+      "population": null
+    },
+    {
+      "name": "Tiruvannamalai",
+      "population": null
+    },
+    {
+      "name": "Krishnagiri",
+      "population": null
+    },
+    {
+      "name": "Dharmapuri",
+      "population": null
+    },
+    {
+      "name": "Salem",
+      "population": null
+    },
+    {
+      "name": "Namakkal",
+      "population": null
+    },
+    {
+      "name": "Erode",
+      "population": null
+    },
+    {
+      "name": "Tiruppur",
+      "population": null
+    },
+    {
+      "name": "Coimbatore",
+      "population": null
+    },
+    {
+      "name": "Nilgiris",
+      "population": null
+    },
+    {
+      "name": "Kallakurichi",
+      "population": null
+    },
+    {
+      "name": "Viluppuram",
+      "population": null
+    },
+    {
+      "name": "Cuddalore",
+      "population": null
+    },
+    {
+      "name": "Perambalur",
+      "population": null
+    },
+    {
+      "name": "Ariyalur",
+      "population": null
+    },
+    {
+      "name": "Tiruchirappalli",
+      "population": null
+    },
+    {
+      "name": "Karur",
+      "population": null
+    },
+    {
+      "name": "Thanjavur",
+      "population": 25
+    },
+    {
+      "name": "Tiruvarur",
+      "population": null
+    },
+    {
+      "name": "Nagapattinam",
+      "population": null
+    },
+    {
+      "name": "Mayiladuthurai",
+      "population": null
+    },
+    {
+      "name": "Pudukkottai",
+      "population": null
+    },
+    {
+      "name": "Sivaganga",
+      "population": null
+    },
+    {
+      "name": "Madurai",
+      "population": null
+    },
+    {
+      "name": "Theni",
+      "population": null
+    },
+    {
+      "name": "Dindigul",
+      "population": null
+    },
+    {
+      "name": "Virudhunagar",
+      "population": null
+    },
+    {
+      "name": "Tirunelveli",
+      "population": null
+    },
+    {
+      "name": "Tenkasi",
+      "population": null
+    },
+    {
+      "name": "Thoothukkudi",
+      "population": null
+    },
+    {
+      "name": "Ramanathapuram",
+      "population": null
+    },
+    {
+      "name": "Kanyakumari",
+      "population": null
+    }
+  ],
+  "note": "Populations are headcounts given by the owner (null = not yet given). Names match lib/game/map/districts.ts fallback keys.",
+  "residents": {
+    "Thanjavur": [
+      {
+        "id": "thanjavur-1",
+        "name": "Velu",
+        "gender": "male",
+        "age": 38,
+        "homeNo": 1,
+        "profession": "farmer",
+        "appearance": {
+          "shirt": "#8a5a2e",
+          "pants": "#e8e4da",
+          "skin": "#a06a45",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "farm",
+          "plot": 1
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-2",
+        "name": "Kumar",
+        "gender": "male",
+        "age": 77,
+        "homeNo": 2,
+        "profession": "elder",
+        "appearance": {
+          "shirt": "#f0ece2",
+          "pants": "#e8e4da",
+          "skin": "#7a4a33",
+          "hair": "#c0c0c0"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-3",
+        "name": "Anand",
+        "gender": "male",
+        "age": 53,
+        "homeNo": 3,
+        "profession": "homemaker",
+        "appearance": {
+          "shirt": "#b83a5e",
+          "pants": "#b83a5e",
+          "skin": "#8d5a3b",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-4",
+        "name": "Prabhu",
+        "gender": "male",
+        "age": 55,
+        "homeNo": 4,
+        "profession": "farmer",
+        "appearance": {
+          "shirt": "#8a5a2e",
+          "pants": "#e8e4da",
+          "skin": "#6b4230",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "farm",
+          "plot": 2
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-5",
+        "name": "Eswari",
+        "gender": "female",
+        "age": 6,
+        "homeNo": 5,
+        "profession": "student",
+        "appearance": {
+          "shirt": "#d0d8e8",
+          "pants": "#2f4d7d",
+          "skin": "#8d5a3b",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home",
+          "note": "walks to village school when one exists"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-6",
+        "name": "Gayathri",
+        "gender": "female",
+        "age": 53,
+        "homeNo": 1,
+        "profession": "farmer",
+        "appearance": {
+          "shirt": "#4a6a8a",
+          "pants": "#f0ece2",
+          "skin": "#7a4a33",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "farm",
+          "plot": 3
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-7",
+        "name": "Hema",
+        "gender": "female",
+        "age": 8,
+        "homeNo": 2,
+        "profession": "student",
+        "appearance": {
+          "shirt": "#d0d8e8",
+          "pants": "#2f4d7d",
+          "skin": "#8d5a3b",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home",
+          "note": "walks to village school when one exists"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-8",
+        "name": "Indra",
+        "gender": "female",
+        "age": 80,
+        "homeNo": 3,
+        "profession": "elder",
+        "appearance": {
+          "shirt": "#f0ece2",
+          "pants": "#e8e4da",
+          "skin": "#6b4230",
+          "hair": "#c0c0c0"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-9",
+        "name": "Mani",
+        "gender": "male",
+        "age": 13,
+        "homeNo": 4,
+        "profession": "student",
+        "appearance": {
+          "shirt": "#d0d8e8",
+          "pants": "#3a3a4a",
+          "skin": "#6b4230",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home",
+          "note": "walks to village school when one exists"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-10",
+        "name": "Janani",
+        "gender": "female",
+        "age": 33,
+        "homeNo": 5,
+        "profession": "farmer",
+        "appearance": {
+          "shirt": "#8a5a2e",
+          "pants": "#e8e4da",
+          "skin": "#7a4a33",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "farm",
+          "plot": 4
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-11",
+        "name": "Kala",
+        "gender": "female",
+        "age": 2,
+        "homeNo": 1,
+        "profession": "toddler",
+        "appearance": {
+          "shirt": "#e8b62e",
+          "pants": "#2f4d7d",
+          "skin": "#7a4a33",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-12",
+        "name": "Lakshmi",
+        "gender": "female",
+        "age": 11,
+        "homeNo": 2,
+        "profession": "student",
+        "appearance": {
+          "shirt": "#d0d8e8",
+          "pants": "#3a3a4a",
+          "skin": "#6b4230",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home",
+          "note": "walks to village school when one exists"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-13",
+        "name": "Rajan",
+        "gender": "male",
+        "age": 40,
+        "homeNo": 3,
+        "profession": "farmer",
+        "appearance": {
+          "shirt": "#8a5a2e",
+          "pants": "#f0ece2",
+          "skin": "#6b4230",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "farm",
+          "plot": 5
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-14",
+        "name": "Kathir",
+        "gender": "male",
+        "age": 29,
+        "homeNo": 4,
+        "profession": "farmer",
+        "appearance": {
+          "shirt": "#7a6a3a",
+          "pants": "#d8cfc0",
+          "skin": "#7a4a33",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "farm",
+          "plot": 6
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-15",
+        "name": "Divya",
+        "gender": "female",
+        "age": 29,
+        "homeNo": 5,
+        "profession": "homemaker",
+        "appearance": {
+          "shirt": "#d4762b",
+          "pants": "#d4762b",
+          "skin": "#7a4a33",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-16",
+        "name": "Priya",
+        "gender": "female",
+        "age": 28,
+        "homeNo": 1,
+        "profession": "homemaker",
+        "appearance": {
+          "shirt": "#b83a5e",
+          "pants": "#b83a5e",
+          "skin": "#a06a45",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-17",
+        "name": "Elango",
+        "gender": "male",
+        "age": 42,
+        "homeNo": 2,
+        "profession": "homemaker",
+        "appearance": {
+          "shirt": "#7a4a8a",
+          "pants": "#7a4a8a",
+          "skin": "#a06a45",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-18",
+        "name": "Sivam",
+        "gender": "male",
+        "age": 13,
+        "homeNo": 3,
+        "profession": "student",
+        "appearance": {
+          "shirt": "#f0f0f0",
+          "pants": "#3a3a4a",
+          "skin": "#8d5a3b",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home",
+          "note": "walks to village school when one exists"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-19",
+        "name": "Dinesh",
+        "gender": "male",
+        "age": 4,
+        "homeNo": 4,
+        "profession": "toddler",
+        "appearance": {
+          "shirt": "#2e8ad4",
+          "pants": "#3d3d4a",
+          "skin": "#6b4230",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-20",
+        "name": "Anitha",
+        "gender": "female",
+        "age": 30,
+        "homeNo": 5,
+        "profession": "farmer",
+        "appearance": {
+          "shirt": "#7a6a3a",
+          "pants": "#e8e4da",
+          "skin": "#6b4230",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "farm",
+          "plot": 7
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-21",
+        "name": "Meena",
+        "gender": "female",
+        "age": 70,
+        "homeNo": 1,
+        "profession": "elder",
+        "appearance": {
+          "shirt": "#f0ece2",
+          "pants": "#f0ece2",
+          "skin": "#8d5a3b",
+          "hair": "#c0c0c0"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-22",
+        "name": "Revathi",
+        "gender": "female",
+        "age": 53,
+        "homeNo": 2,
+        "profession": "farmer",
+        "appearance": {
+          "shirt": "#7a6a3a",
+          "pants": "#f0ece2",
+          "skin": "#a06a45",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "farm",
+          "plot": 8
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-23",
+        "name": "Arun",
+        "gender": "male",
+        "age": 71,
+        "homeNo": 3,
+        "profession": "elder",
+        "appearance": {
+          "shirt": "#e8e4da",
+          "pants": "#e8e4da",
+          "skin": "#7a4a33",
+          "hair": "#c0c0c0"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-24",
+        "name": "Bala",
+        "gender": "male",
+        "age": 13,
+        "homeNo": 4,
+        "profession": "student",
+        "appearance": {
+          "shirt": "#e8e8e8",
+          "pants": "#2f4d7d",
+          "skin": "#8d5a3b",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home",
+          "note": "walks to village school when one exists"
+        },
+        "travelMode": "walk"
+      },
+      {
+        "id": "thanjavur-25",
+        "name": "Chandran",
+        "gender": "male",
+        "age": 26,
+        "homeNo": 5,
+        "profession": "homemaker",
+        "appearance": {
+          "shirt": "#c0392b",
+          "pants": "#c0392b",
+          "skin": "#6b4230",
+          "hair": "#14100d"
+        },
+        "workplace": {
+          "place": "home"
+        },
+        "travelMode": "walk"
+      }
+    ]
+  },
+  "state": "Tamil Nadu"
+}

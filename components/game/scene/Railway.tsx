@@ -13,7 +13,9 @@ import { groundHeight } from "@/lib/game/map/terrain";
 
 const BALLAST_W = 4.5;
 const RAIL_GAUGE = 0.85; // half-gauge: rails at ±0.85 m
-const PIECE_LEN = 60; // ballast/rail segment length
+// Short segments so ballast/rail chords follow tight corners instead of
+// cutting across them (still 3 instanced draw calls total).
+const PIECE_LEN = 20; // ballast/rail segment length
 
 const signCache = new Map<string, THREE.CanvasTexture | null>();
 function stationSignTexture(text: string): THREE.CanvasTexture | null {
@@ -117,32 +119,32 @@ function Station({ lineId, index }: { lineId: string; index: number }) {
 
   return (
     <group position={[px, gy, pz]} rotation-y={c.yaw}>
-      {/* Platform */}
-      <mesh position={[0, 0.55, 0]} receiveShadow>
-        <boxGeometry args={[5, 1.1, platLen]} />
+      {/* Platform: top flush with the coach floor (0.95) for level boarding. */}
+      <mesh position={[0, 0.475, 0]} receiveShadow>
+        <boxGeometry args={[5, 0.95, platLen]} />
         <meshStandardMaterial color="#b0a58e" roughness={1} />
       </mesh>
-      <mesh position={[-2.4, 1.12, 0]}>
+      <mesh position={[-2.4, 0.97, 0]}>
         <boxGeometry args={[0.3, 0.04, platLen]} />
         <meshStandardMaterial color="#f5f5f5" roughness={0.8} />
       </mesh>
-      {/* Access stairs at both ends (visual; jump also works) */}
-      {[platLen / 2 + 0.4, -platLen / 2 - 0.4].map((z, si) => (
+      {/* Access stairs at both ends (walkable: +0.32 / +0.63 treads). */}
+      {[platLen / 2 + 0.85, -platLen / 2 - 0.85].map((z, si) => (
         <group key={si} position={[0, 0, z]}>
-          <mesh position={[0, 0.185, 0]} receiveShadow>
-            <boxGeometry args={[3, 0.37, 0.9]} />
+          <mesh position={[0, 0.16, 0]} receiveShadow>
+            <boxGeometry args={[3, 0.32, 0.9]} />
             <meshStandardMaterial color="#9a917f" roughness={1} />
           </mesh>
-          <mesh position={[0, 0.55, si === 0 ? -0.55 : 0.55]} receiveShadow>
-            <boxGeometry args={[3, 0.37, 0.9]} />
+          <mesh position={[0, 0.315, si === 0 ? -0.55 : 0.55]} receiveShadow>
+            <boxGeometry args={[3, 0.63, 0.9]} />
             <meshStandardMaterial color="#9a917f" roughness={1} />
           </mesh>
         </group>
       ))}
-      {/* Shelter: posts + roof */}
+      {/* Shelter: posts (no shadow) + roof (casts — the one big shadow) */}
       {[-6, 6].map((z) =>
         [-1.5, 1.5].map((x) => (
-          <mesh key={`${x}-${z}`} position={[x, 2.2, z]} castShadow>
+          <mesh key={`${x}-${z}`} position={[x, 2.15, z]}>
             <cylinderGeometry args={[0.12, 0.12, 2.4, 8]} />
             <meshStandardMaterial color="#3a3f45" roughness={0.8} />
           </mesh>
@@ -154,7 +156,7 @@ function Station({ lineId, index }: { lineId: string; index: number }) {
       </mesh>
       {/* Benches */}
       {[-3, 3].map((z) => (
-        <mesh key={z} position={[0.8, 1.45, z]} castShadow>
+        <mesh key={z} position={[0.8, 1.2, z]}>
           <boxGeometry args={[0.6, 0.5, 2.2]} />
           <meshStandardMaterial color="#6b4a2f" roughness={0.9} />
         </mesh>
@@ -162,7 +164,7 @@ function Station({ lineId, index }: { lineId: string; index: number }) {
       {/* Name board facing the track */}
       <group position={[-2.6, 0, 0]} rotation-y={-Math.PI / 2}>
         {[-2.4, 2.4].map((x) => (
-          <mesh key={x} position={[x, 2.4, 0]} castShadow>
+          <mesh key={x} position={[x, 2.75, 0]}>
             <cylinderGeometry args={[0.09, 0.09, 3.6, 8]} />
             <meshStandardMaterial color="#3a3f45" roughness={0.8} />
           </mesh>
@@ -174,10 +176,10 @@ function Station({ lineId, index }: { lineId: string; index: number }) {
           </mesh>
         )}
       </group>
-      {/* Lamp posts */}
+      {/* Lamp posts (beside the platform, on the ground) */}
       {[-14, 14].map((z) => (
-        <group key={z} position={[1.8, 0, z]}>
-          <mesh position={[0, 3, 0]} castShadow>
+        <group key={z} position={[3.2, 0, z]}>
+          <mesh position={[0, 3, 0]}>
             <cylinderGeometry args={[0.08, 0.1, 6, 8]} />
             <meshStandardMaterial color="#2c2f34" roughness={0.8} />
           </mesh>

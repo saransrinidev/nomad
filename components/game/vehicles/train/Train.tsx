@@ -10,7 +10,6 @@ import { useRef, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import {
-  COACH_LEN,
   LINES,
   LOCO_LEN,
   trainCarCenters,
@@ -18,6 +17,7 @@ import {
 } from "@/lib/game/map/railway";
 import { groundHeight } from "@/lib/game/map/terrain";
 import type { GameWorld } from "@/lib/game/state";
+import IndianRailwayCoach from "./IndianRailwayCoach";
 
 const CAR_W = 4;
 const LOCO_H = 3.4;
@@ -98,141 +98,16 @@ function Loco() {
   );
 }
 
-function CoachShell() {
-  // Hollow shell (4 m wide, taller): floor, lower panels with 1.8 m doorway
-  // gaps at z=±4.5 on each side, pillars, open window band, top rails, roof,
-  // end walls, doorway bridge plates, ceiling light strips.
-  const HW = 2.0;
-  const side = (sx: 1 | -1) => (
-    <group key={sx}>
-      {/* Lower panels with doorway gaps spanning z ±[3.6, 5.4] */}
-      {[
-        { z: -5.7, len: 0.6 },
-        { z: 0, len: 7.2 },
-        { z: 5.7, len: 0.6 },
-      ].map((p, i) => (
-        <mesh key={i} position={[sx * (HW - 0.1), 1.3, p.z]} castShadow>
-          <boxGeometry args={[0.1, 0.8, p.len]} />
-          <meshStandardMaterial color="#1f4e9c" roughness={0.6} />
-        </mesh>
-      ))}
-      {/* Door pockets (open sliding doors) */}
-      {[-2.8, 2.8].map((z) => (
-        <mesh key={z} position={[sx * (HW + 0.02), 1.3, z]} castShadow>
-          <boxGeometry args={[0.06, 0.8, 1.6]} />
-          <meshStandardMaterial color="#16386e" roughness={0.6} />
-        </mesh>
-      ))}
-      {/* Bridge plates spanning the platform gap at each doorway */}
-      {[-4.5, 4.5].map((z) => (
-        <mesh key={z} position={[sx * (HW + 0.45), 0.9, z]} receiveShadow>
-          <boxGeometry args={[1.1, 0.1, 1.8]} />
-          <meshStandardMaterial color="#8d939c" roughness={0.7} metalness={0.3} />
-        </mesh>
-      ))}
-      {/* Pillars between the windows (clear of the doorway spans) */}
-      {[-5.7, -2, 0, 2, 5.7].map((z) => (
-        <mesh key={z} position={[sx * (HW - 0.1), 2.35, z]} castShadow>
-          <boxGeometry args={[0.12, 1.1, 0.18]} />
-          <meshStandardMaterial color="#1f4e9c" roughness={0.6} />
-        </mesh>
-      ))}
-      {/* Top rail above the open band */}
-      <mesh position={[sx * (HW - 0.1), 3.0, 0]} castShadow>
-        <boxGeometry args={[0.1, 0.2, COACH_LEN]} />
-        <meshStandardMaterial color="#1f4e9c" roughness={0.6} />
-      </mesh>
-    </group>
-  );
+function Coach({ last, lineId, carIndex, worldRef }: { last: boolean; lineId: string; carIndex: number; worldRef: RefObject<GameWorld> }) {
+  // Blue ICF-style general coach (coach numbers vary per position).
   return (
-    <group>
-      {/* Floor */}
-      <mesh position={[0, 0.875, 0]} receiveShadow>
-        <boxGeometry args={[3.9, 0.15, COACH_LEN]} />
-        <meshStandardMaterial color="#6a6258" roughness={0.9} />
-      </mesh>
-      {side(1)}
-      {side(-1)}
-      {/* End walls with gangway doors */}
-      {[COACH_LEN / 2, -COACH_LEN / 2].map((z) => (
-        <group key={z}>
-          <mesh position={[0, 2.0, z]} castShadow>
-            <boxGeometry args={[3.9, 2.2, 0.12]} />
-            <meshStandardMaterial color="#1f4e9c" roughness={0.6} />
-          </mesh>
-          <mesh position={[0, 1.85, z + Math.sign(z) * 0.04]}>
-            <boxGeometry args={[1.0, 1.8, 0.06]} />
-            <meshStandardMaterial color="#10161f" roughness={0.7} />
-          </mesh>
-        </group>
-      ))}
-      {/* Roof */}
-      <mesh position={[0, 3.2, 0]} castShadow>
-        <boxGeometry args={[3.9, 0.2, COACH_LEN]} />
-        <meshStandardMaterial color="#9aa0a8" roughness={0.7} />
-      </mesh>
-      {/* Ceiling light strips */}
-      {[-0.7, 0.7].map((x) => (
-        <mesh key={x} position={[x, 3.02, 0]}>
-          <boxGeometry args={[0.3, 0.06, 10]} />
-          <meshStandardMaterial
-            color="#fff6dc"
-            emissive="#ffeeb8"
-            emissiveIntensity={1.6}
-          />
-        </mesh>
-      ))}
-      {/* Interior cabin light (one shadowless point per coach) */}
-      <pointLight position={[0, 2.5, 0]} color="#ffdfb0" intensity={15} distance={10} decay={2} />
-    </group>
-  );
-}
-
-function CoachInterior() {
-  // Seats both sides (anchors live at z=-1.5) + one spare row, one berth.
-  return (
-    <group>
-      {[-1.5, 1.0].map((z) =>
-        [-1.1, 1.1].map((x) => (
-          <group key={`${x}-${z}`}>
-            <mesh position={[x, 1.25, z]} castShadow>
-              <boxGeometry args={[0.6, 0.5, 0.6]} />
-              <meshStandardMaterial color="#7a2e2e" roughness={0.85} />
-            </mesh>
-            <mesh position={[x, 1.55, z - 0.36]} castShadow>
-              <boxGeometry args={[0.6, 0.7, 0.14]} />
-              <meshStandardMaterial color="#7a2e2e" roughness={0.85} />
-            </mesh>
-          </group>
-        )),
-      )}
-      {/* Side lower berth (anchor at z=+2.8, x=-1.1) */}
-      <mesh position={[-1.1, 1.6, 2.8]} castShadow>
-        <boxGeometry args={[0.9, 0.2, 2.0]} />
-        <meshStandardMaterial color="#2e5e7a" roughness={0.85} />
-      </mesh>
-      <mesh position={[-1.1, 1.78, 2.8]}>
-        <boxGeometry args={[0.8, 0.08, 1.9]} />
-        <meshStandardMaterial color="#d8d2c2" roughness={0.9} />
-      </mesh>
-    </group>
-  );
-}
-
-function Coach({ last }: { last: boolean }) {
-  return (
-    <group>
-      <CoachShell />
-      <CoachInterior />
-      {/* Tail lamp on the last coach */}
-      {last && (
-        <mesh position={[0, 2.4, -COACH_LEN / 2 - 0.06]}>
-          <boxGeometry args={[0.5, 0.4, 0.1]} />
-          <meshStandardMaterial color="#7a1010" emissive="#c02020" emissiveIntensity={0.8} />
-        </mesh>
-      )}
-      <Wheels len={COACH_LEN} />
-    </group>
+    <IndianRailwayCoach
+      last={last}
+      lineId={lineId}
+      carIndex={carIndex}
+      coachNumber={`0820${carIndex}`}
+      worldRef={worldRef}
+    />
   );
 }
 
@@ -266,7 +141,7 @@ export default function Train({ worldRef }: { worldRef: RefObject<GameWorld> }) 
               carRefs.current.set(`${line.id}:${i}`, g);
             }}
           >
-            {i === 0 ? <Loco /> : <Coach last={i === line.coachCount} />}
+            {i === 0 ? <Loco /> : <Coach last={i === line.coachCount} lineId={line.id} carIndex={i} worldRef={worldRef} />}
           </group>
         )),
       )}
