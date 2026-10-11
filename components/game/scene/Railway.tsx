@@ -11,7 +11,7 @@ import { useFrame } from "@react-three/fiber";
 import { getLine, getLines, lineDeparture, lineEndWalls, lineRenderBounds, OPEN_PLATFORM_FACES, railBridgeSpans, railSurfaceY, trackDeckAt, trackPointAt } from "@/lib/game/map/railway";
 import { consistLength } from "@/lib/game/map/railway";
 import { groundHeight } from "@/lib/game/map/terrain";
-import { formatTime } from "@/lib/game/map/time";
+import { formatTime, nightFactor } from "@/lib/game/map/time";
 import type { GameWorld } from "@/lib/game/state";
 
 const BALLAST_W = 4.5;
@@ -71,6 +71,44 @@ function stationSignTexture(text: string): THREE.CanvasTexture | null {
   tex.anisotropy = 4;
   signCache.set(text, tex);
   return tex;
+}
+
+// Shared lit sign materials (one per sign texture): the emissive channel
+// carries the same texture so boards keep their blue/white look instead
+// of washing out. BoardGlow drives emissiveIntensity from nightfall once
+// per frame — near-invisible by day, full glow after dark.
+const boardMats = new Map<THREE.Texture, THREE.MeshStandardMaterial>();
+let boardFallback: THREE.MeshStandardMaterial | null = null;
+function boardMaterial(tex: THREE.CanvasTexture | null): THREE.MeshStandardMaterial {
+  if (!tex) {
+    if (!boardFallback) {
+      boardFallback = new THREE.MeshStandardMaterial({ color: "#14307f", roughness: 0.7 });
+    }
+    return boardFallback;
+  }
+  let m = boardMats.get(tex);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissiveMap: tex,
+      emissive: new THREE.Color("#ffffff"),
+      emissiveIntensity: 0.08,
+      roughness: 0.7,
+    });
+    boardMats.set(tex, m);
+  }
+  return m;
+}
+function BoardGlow({ worldRef }: { worldRef?: RefObject<GameWorld> }) {
+  useFrame(() => {
+    const t = worldRef?.current?.time;
+    const night = t === undefined ? 0 : nightFactor(t);
+    const v = 0.08 + night * 0.8;
+    boardMats.forEach((m) => {
+      m.emissiveIntensity = v;
+    });
+  });
+  return null;
 }
 
 interface Piece {
@@ -321,11 +359,11 @@ function Station({ lineId, index, bare = false, numberBoard, canopy = false, wor
             <>
               <mesh position={[0, 2.9, 0.04]}>
                 <planeGeometry args={[2.4, 1.0]} />
-                <meshStandardMaterial map={boardTex} roughness={0.6} />
+                <primitive object={boardMaterial(boardTex)} attach="material" />
               </mesh>
               <mesh position={[0, 2.9, -0.04]} rotation-y={Math.PI}>
                 <planeGeometry args={[2.4, 1.0]} />
-                <meshStandardMaterial map={boardTex} roughness={0.6} />
+                <primitive object={boardMaterial(boardTex)} attach="material" />
               </mesh>
             </>
           )}
@@ -387,7 +425,7 @@ function Station({ lineId, index, bare = false, numberBoard, canopy = false, wor
             {sign && (
               <mesh position={[0, 3.6, 0]}>
                 <planeGeometry args={[6, 1.5]} />
-                <meshStandardMaterial map={sign} roughness={0.8} />
+                <primitive object={boardMaterial(sign)} attach="material" />
               </mesh>
             )}
           </group>
@@ -431,12 +469,12 @@ const TRICHY_BOARDS: Record<string, string> = {
 const VILLUPURAM_BOARDS: Record<string, string> = {
   "chennai:2": "1",
   "southern:1": "2",
-  "northern:5": "3",
+  "northern:4": "3",
 };
 // Katpadi row faces → platform numbers: R2 main → 1, R7 → 2.
 const KATPADI_BOARDS: Record<string, string> = {
   "western:2": "1",
-  "northern:3": "2",
+  "northern:2": "2",
 };
 // Double-track pair halts → platform numbers (main line 1, branch 2).
 const PAIR_BOARDS: Record<string, string> = {
@@ -484,11 +522,11 @@ function SharedNameSign({
       ))}
       <mesh position={[0, 3.4, 0.05]}>
         <planeGeometry args={[8, 1.6]} />
-        <meshStandardMaterial map={tex} roughness={0.7} />
+        <primitive object={boardMaterial(tex)} attach="material" />
       </mesh>
       <mesh position={[0, 3.4, -0.05]} rotation-y={Math.PI}>
         <planeGeometry args={[8, 1.6]} />
-        <meshStandardMaterial map={tex} roughness={0.7} />
+        <primitive object={boardMaterial(tex)} attach="material" />
       </mesh>
     </group>
   );
@@ -541,11 +579,11 @@ function TrichyJunction() {
         <>
           <mesh position={[0, 3.9, 8.08]}>
             <planeGeometry args={[12, 2.4]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
           <mesh position={[0, 3.9, -8.08]} rotation-y={Math.PI}>
             <planeGeometry args={[12, 2.4]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
         </>
       )}
@@ -647,11 +685,11 @@ function VillupuramJunction() {
         <>
           <mesh position={[0, 3.9, 8.08]}>
             <planeGeometry args={[12, 2.4]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
           <mesh position={[0, 3.9, -8.08]} rotation-y={Math.PI}>
             <planeGeometry args={[12, 2.4]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
         </>
       )}
@@ -701,11 +739,11 @@ function CoimbatoreShed() {
         <>
           <mesh position={[14.2, 5.8, 0]} rotation-y={Math.PI / 2}>
             <planeGeometry args={[10, 2]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
           <mesh position={[14.2, 5.8, 0]} rotation-y={-Math.PI / 2}>
             <planeGeometry args={[10, 2]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
         </>
       )}
@@ -725,11 +763,11 @@ function CoimbatoreShed() {
             <>
               <mesh position={[0, 4.6, 0.02]}>
                 <planeGeometry args={[3.2, 0.8]} />
-                <meshStandardMaterial map={tex} roughness={0.6} />
+                <primitive object={boardMaterial(tex)} attach="material" />
               </mesh>
               <mesh position={[0, 4.6, -0.02]} rotation-y={Math.PI}>
                 <planeGeometry args={[3.2, 0.8]} />
-                <meshStandardMaterial map={tex} roughness={0.6} />
+                <primitive object={boardMaterial(tex)} attach="material" />
               </mesh>
             </>
           )}
@@ -781,11 +819,11 @@ function KatpadiJunction() {
         <>
           <mesh position={[13.2, 5.8, 0]} rotation-y={Math.PI / 2}>
             <planeGeometry args={[10, 2]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
           <mesh position={[13.2, 5.8, 0]} rotation-y={-Math.PI / 2}>
             <planeGeometry args={[10, 2]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
         </>
       )}
@@ -805,11 +843,11 @@ function KatpadiJunction() {
             <>
               <mesh position={[0, 4.6, 0.02]}>
                 <planeGeometry args={[3.2, 0.8]} />
-                <meshStandardMaterial map={tex} roughness={0.6} />
+                <primitive object={boardMaterial(tex)} attach="material" />
               </mesh>
               <mesh position={[0, 4.6, -0.02]} rotation-y={Math.PI}>
                 <planeGeometry args={[3.2, 0.8]} />
-                <meshStandardMaterial map={tex} roughness={0.6} />
+                <primitive object={boardMaterial(tex)} attach="material" />
               </mesh>
             </>
           )}
@@ -819,19 +857,271 @@ function KatpadiJunction() {
   );
 }
 
-// Arakkonam junction shed: ONE roof over both faces (R2 main, R7 fourteen
-// meters south on the same side as R2's platform), hanging 1·2 boards,
-// tube battens and a single ARAKKONAM fascia. Columns stand only in
-// verified gaps (all clearances ≥2 m).
-function ArakkonamJunction() {  const r = getLine("western").stations[1];
+// Erode junction shed: ONE roof over both faces (R2 main, R6 fourteen
+// meters north, locked dead parallel, opposite travel directions so the
+// platforms sit on the OUTER sides Coimbatore-style). Hanging 1·2 boards,
+// tube battens, a single ERODE fascia and two warm pools of real light.
+// Columns stand only in verified gaps (all clearances ≥2 m, including
+// passing consists at every z).
+function ErodeShed() {
+  const r = getLine("western").stations[5];
   const gy = groundHeight(r.x, r.z);
-  const sign = stationSignTexture("ARAKKONAM");
+  const sign = stationSignTexture("ERODE");
+  const one = stationSignTexture("1");
+  const two = stationSignTexture("2");
+  return (
+    <group position={[r.x, gy, r.z]} rotation-y={r.yaw}>
+      {[-24, -7, 11].map((x) =>
+        [-60, 0, 60].map((z) => (
+          <mesh key={`${x}:${z}`} position={[x, 3.5, z]}>
+            <cylinderGeometry args={[0.22, 0.26, 7, 8]} />
+            <meshStandardMaterial color="#3a3f45" roughness={0.8} />
+          </mesh>
+        )),
+      )}
+      <mesh position={[-7, 7.1, 0]} castShadow>
+        <boxGeometry args={[38, 0.3, 140]} />
+        <meshStandardMaterial color="#7a3b2e" roughness={0.9} />
+      </mesh>
+      <mesh position={[-7, 6.85, 0]}>
+        <boxGeometry args={[38.4, 0.25, 140.4]} />
+        <meshStandardMaterial color="#f3e3c2" roughness={0.7} />
+      </mesh>
+      {/* Tube battens over both tracks (mounted, always lit). */}
+      {[0, -14].map((lx) =>
+        [-30, -10, 10, 30].map((dz) => (
+          <mesh key={`${lx}:${dz}`} position={[lx, 6.85, dz]}>
+            <boxGeometry args={[1.4, 0.12, 0.5]} />
+            <meshBasicMaterial color="#fff3d0" toneMapped={false} />
+          </mesh>
+        )),
+      )}
+      {/* Two warm pools of real light over the platforms (night-readable). */}
+      <pointLight position={[-7, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      <pointLight position={[-7, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Single name board on the south fascia, readable both ways. */}
+      {sign && (
+        <>
+          <mesh position={[12.2, 5.8, 0]} rotation-y={Math.PI / 2}>
+            <planeGeometry args={[10, 2]} />
+            <primitive object={boardMaterial(sign)} attach="material" />
+          </mesh>
+          <mesh position={[12.2, 5.8, 0]} rotation-y={-Math.PI / 2}>
+            <planeGeometry args={[10, 2]} />
+            <primitive object={boardMaterial(sign)} attach="material" />
+          </mesh>
+        </>
+      )}
+      {/* Hanging platform number boards over each track: 1-2. */}
+      {[
+        { tex: one, lx: 0 },
+        { tex: two, lx: -14 },
+      ].map(({ tex, lx }, i) => (
+        <group key={i} position={[lx, 0, 0]}>
+          {[-0.5, 0.5].map((dx) => (
+            <mesh key={dx} position={[dx, 5.6, 0]}>
+              <cylinderGeometry args={[0.03, 0.03, 1.6, 6]} />
+              <meshStandardMaterial color="#2c2f34" roughness={0.8} />
+            </mesh>
+          ))}
+          {tex && (
+            <>
+              <mesh position={[0, 4.6, 0.02]}>
+                <planeGeometry args={[3.2, 0.8]} />
+                <primitive object={boardMaterial(tex)} attach="material" />
+              </mesh>
+              <mesh position={[0, 4.6, -0.02]} rotation-y={Math.PI}>
+                <planeGeometry args={[3.2, 0.8]} />
+                <primitive object={boardMaterial(tex)} attach="material" />
+              </mesh>
+            </>
+          )}
+        </group>
+      ))}
+    </group>
+  );
+}
+
+// Madurai junction shed: ONE roof over both faces (R3 main, R5 twelve
+// meters east, locked dead N-S parallel — same island+outer layout as
+// Arakkonam), hanging 1·2 boards, tube battens, a single MADURAI fascia
+// and two warm pools of real light. The middle gap (2.9 m) fits no column,
+// so columns stand only outside both platforms (all clearances ≥2 m).
+function MaduraiShed() {
+  const r = getLine("southern").stations[4];
+  const gy = groundHeight(r.x, r.z);
+  const sign = stationSignTexture("MADURAI");
+  const one = stationSignTexture("1");
+  const two = stationSignTexture("2");
+  return (
+    <group position={[r.x, gy, r.z]} rotation-y={r.yaw}>
+      {[-5, 22].map((x) =>
+        [-60, 0, 60].map((z) => (
+          <mesh key={`${x}:${z}`} position={[x, 3.5, z]}>
+            <cylinderGeometry args={[0.22, 0.26, 7, 8]} />
+            <meshStandardMaterial color="#3a3f45" roughness={0.8} />
+          </mesh>
+        )),
+      )}
+      <mesh position={[9, 7.1, 0]} castShadow>
+        <boxGeometry args={[30, 0.3, 140]} />
+        <meshStandardMaterial color="#7a3b2e" roughness={0.9} />
+      </mesh>
+      <mesh position={[9, 6.85, 0]}>
+        <boxGeometry args={[30.4, 0.25, 140.4]} />
+        <meshStandardMaterial color="#f3e3c2" roughness={0.7} />
+      </mesh>
+      {/* Tube battens over both tracks (mounted, always lit). */}
+      {[0, 12].map((lx) =>
+        [-30, -10, 10, 30].map((dz) => (
+          <mesh key={`${lx}:${dz}`} position={[lx, 6.85, dz]}>
+            <boxGeometry args={[0.5, 0.12, 1.4]} />
+            <meshBasicMaterial color="#fff3d0" toneMapped={false} />
+          </mesh>
+        )),
+      )}
+      {/* Two warm pools of real light over the platforms (night-readable). */}
+      <pointLight position={[4, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      <pointLight position={[14, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Single name board on the east fascia, readable both ways. */}
+      {sign && (
+        <>
+          <mesh position={[24.2, 5.8, 0]} rotation-y={Math.PI / 2}>
+            <planeGeometry args={[10, 2]} />
+            <primitive object={boardMaterial(sign)} attach="material" />
+          </mesh>
+          <mesh position={[24.2, 5.8, 0]} rotation-y={-Math.PI / 2}>
+            <planeGeometry args={[10, 2]} />
+            <primitive object={boardMaterial(sign)} attach="material" />
+          </mesh>
+        </>
+      )}
+      {/* Hanging platform number boards over each track: 1-2. */}
+      {[
+        { tex: one, lx: 0 },
+        { tex: two, lx: 12 },
+      ].map(({ tex, lx }, i) => (
+        <group key={i} position={[lx, 0, 0]}>
+          {[-0.5, 0.5].map((dx) => (
+            <mesh key={dx} position={[dx, 5.6, 0]}>
+              <cylinderGeometry args={[0.03, 0.03, 1.6, 6]} />
+              <meshStandardMaterial color="#2c2f34" roughness={0.8} />
+            </mesh>
+          ))}
+          {tex && (
+            <>
+              <mesh position={[0, 4.6, 0.02]}>
+                <planeGeometry args={[3.2, 0.8]} />
+                <primitive object={boardMaterial(tex)} attach="material" />
+              </mesh>
+              <mesh position={[0, 4.6, -0.02]} rotation-y={Math.PI}>
+                <planeGeometry args={[3.2, 0.8]} />
+                <primitive object={boardMaterial(tex)} attach="material" />
+              </mesh>
+            </>
+          )}
+        </group>
+      ))}
+    </group>
+  );
+}
+
+// Virudhunagar junction shed: identical twin of MaduraiShed over the
+// R3+R5 pair 12 m apart (VIRUDHUNAGAR fascia, 1·2 boards, battens, lights).
+function VirudhunagarShed() {
+  const r = getLine("southern").stations[5];
+  const gy = groundHeight(r.x, r.z);
+  const sign = stationSignTexture("VIRUDHUNAGAR");
+  const one = stationSignTexture("1");
+  const two = stationSignTexture("2");
+  return (
+    <group position={[r.x, gy, r.z]} rotation-y={r.yaw}>
+      {[-5, 22].map((x) =>
+        [-60, 0, 60].map((z) => (
+          <mesh key={`${x}:${z}`} position={[x, 3.5, z]}>
+            <cylinderGeometry args={[0.22, 0.26, 7, 8]} />
+            <meshStandardMaterial color="#3a3f45" roughness={0.8} />
+          </mesh>
+        )),
+      )}
+      <mesh position={[9, 7.1, 0]} castShadow>
+        <boxGeometry args={[30, 0.3, 140]} />
+        <meshStandardMaterial color="#7a3b2e" roughness={0.9} />
+      </mesh>
+      <mesh position={[9, 6.85, 0]}>
+        <boxGeometry args={[30.4, 0.25, 140.4]} />
+        <meshStandardMaterial color="#f3e3c2" roughness={0.7} />
+      </mesh>
+      {/* Tube battens over both tracks (mounted, always lit). */}
+      {[0, 12].map((lx) =>
+        [-30, -10, 10, 30].map((dz) => (
+          <mesh key={`${lx}:${dz}`} position={[lx, 6.85, dz]}>
+            <boxGeometry args={[0.5, 0.12, 1.4]} />
+            <meshBasicMaterial color="#fff3d0" toneMapped={false} />
+          </mesh>
+        )),
+      )}
+      {/* Two warm pools of real light over the platforms (night-readable). */}
+      <pointLight position={[4, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      <pointLight position={[14, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Single name board on the east fascia, readable both ways. */}
+      {sign && (
+        <>
+          <mesh position={[24.2, 5.8, 0]} rotation-y={Math.PI / 2}>
+            <planeGeometry args={[10, 2]} />
+            <primitive object={boardMaterial(sign)} attach="material" />
+          </mesh>
+          <mesh position={[24.2, 5.8, 0]} rotation-y={-Math.PI / 2}>
+            <planeGeometry args={[10, 2]} />
+            <primitive object={boardMaterial(sign)} attach="material" />
+          </mesh>
+        </>
+      )}
+      {/* Hanging platform number boards over each track: 1-2. */}
+      {[
+        { tex: one, lx: 0 },
+        { tex: two, lx: 12 },
+      ].map(({ tex, lx }, i) => (
+        <group key={i} position={[lx, 0, 0]}>
+          {[-0.5, 0.5].map((dx) => (
+            <mesh key={dx} position={[dx, 5.6, 0]}>
+              <cylinderGeometry args={[0.03, 0.03, 1.6, 6]} />
+              <meshStandardMaterial color="#2c2f34" roughness={0.8} />
+            </mesh>
+          ))}
+          {tex && (
+            <>
+              <mesh position={[0, 4.6, 0.02]}>
+                <planeGeometry args={[3.2, 0.8]} />
+                <primitive object={boardMaterial(tex)} attach="material" />
+              </mesh>
+              <mesh position={[0, 4.6, -0.02]} rotation-y={Math.PI}>
+                <planeGeometry args={[3.2, 0.8]} />
+                <primitive object={boardMaterial(tex)} attach="material" />
+              </mesh>
+            </>
+          )}
+        </group>
+      ))}
+    </group>
+  );
+}
+
+// Tirunelveli junction shed: ONE roof over both faces (R3 main, R5 fourteen
+// meters east, locked dead N-S parallel — same island+outer layout as
+// Arakkonam), hanging 1·2 boards, tube battens, a single TIRUNELVELI fascia
+// and two warm pools of real light. Columns stand only in verified gaps
+// (all clearances ≥2 m, including passing consists at every z).
+function TirunelveliShed() {
+  const r = getLine("southern").stations[6];
+  const gy = groundHeight(r.x, r.z);
+  const sign = stationSignTexture("TIRUNELVELI");
   const one = stationSignTexture("1");
   const two = stationSignTexture("2");
   return (
     <group position={[r.x, gy, r.z]} rotation-y={r.yaw}>
       {[-5, 9.5, 24].map((x) =>
-        [-50, 0, 50].map((z) => (
+        [-60, 0, 60].map((z) => (
           <mesh key={`${x}:${z}`} position={[x, 3.5, z]}>
             <cylinderGeometry args={[0.22, 0.26, 7, 8]} />
             <meshStandardMaterial color="#3a3f45" roughness={0.8} />
@@ -839,32 +1129,35 @@ function ArakkonamJunction() {  const r = getLine("western").stations[1];
         )),
       )}
       <mesh position={[9.5, 7.1, 0]} castShadow>
-        <boxGeometry args={[29, 0.3, 120]} />
+        <boxGeometry args={[29, 0.3, 140]} />
         <meshStandardMaterial color="#7a3b2e" roughness={0.9} />
       </mesh>
       <mesh position={[9.5, 6.85, 0]}>
-        <boxGeometry args={[29.4, 0.25, 120.4]} />
+        <boxGeometry args={[29.4, 0.25, 140.4]} />
         <meshStandardMaterial color="#f3e3c2" roughness={0.7} />
       </mesh>
       {/* Tube battens over both tracks (mounted, always lit). */}
       {[0, 14].map((lx) =>
-        [-10, 0, 10].map((dz) => (
+        [-30, -10, 10, 30].map((dz) => (
           <mesh key={`${lx}:${dz}`} position={[lx, 6.85, dz]}>
-            <boxGeometry args={[1.4, 0.12, 0.5]} />
+            <boxGeometry args={[0.5, 0.12, 1.4]} />
             <meshBasicMaterial color="#fff3d0" toneMapped={false} />
           </mesh>
         )),
       )}
-      {/* Single name board on the south fascia, readable both ways. */}
+      {/* Two warm pools of real light over the platforms (night-readable). */}
+      <pointLight position={[4, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      <pointLight position={[14, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Single name board on the east fascia, readable both ways. */}
       {sign && (
         <>
           <mesh position={[24.2, 5.8, 0]} rotation-y={Math.PI / 2}>
             <planeGeometry args={[10, 2]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
           <mesh position={[24.2, 5.8, 0]} rotation-y={-Math.PI / 2}>
             <planeGeometry args={[10, 2]} />
-            <meshStandardMaterial map={sign} roughness={0.7} />
+            <primitive object={boardMaterial(sign)} attach="material" />
           </mesh>
         </>
       )}
@@ -884,11 +1177,87 @@ function ArakkonamJunction() {  const r = getLine("western").stations[1];
             <>
               <mesh position={[0, 4.6, 0.02]}>
                 <planeGeometry args={[3.2, 0.8]} />
-                <meshStandardMaterial map={tex} roughness={0.6} />
+                <primitive object={boardMaterial(tex)} attach="material" />
               </mesh>
               <mesh position={[0, 4.6, -0.02]} rotation-y={Math.PI}>
                 <planeGeometry args={[3.2, 0.8]} />
-                <meshStandardMaterial map={tex} roughness={0.6} />
+                <primitive object={boardMaterial(tex)} attach="material" />
+              </mesh>
+            </>
+          )}
+        </group>
+      ))}
+    </group>
+  );
+}
+
+// Arakkonam junction shed: roof over Route 2's face only (the northern
+// face is a standalone angled halt 150 m SE with its own building).
+// Hanging board 1, tube battens and a single ARAKKONAM fascia. Columns
+// stand only in verified gaps (all clearances ≥2 m).
+function ArakkonamJunction() {  const r = getLine("western").stations[1];
+  const gy = groundHeight(r.x, r.z);
+  const sign = stationSignTexture("ARAKKONAM");
+  const one = stationSignTexture("1");
+  return (
+    <group position={[r.x, gy, r.z]} rotation-y={r.yaw}>
+      {[-5, 9.5, 24].map((x) =>
+        [-50, 0, 50].map((z) => (
+          <mesh key={`${x}:${z}`} position={[x, 3.5, z]}>
+            <cylinderGeometry args={[0.22, 0.26, 7, 8]} />
+            <meshStandardMaterial color="#3a3f45" roughness={0.8} />
+          </mesh>
+        )),
+      )}
+      <mesh position={[9.5, 7.1, 0]} castShadow>
+        <boxGeometry args={[29, 0.3, 120]} />
+        <meshStandardMaterial color="#7a3b2e" roughness={0.9} />
+      </mesh>
+      <mesh position={[9.5, 6.85, 0]}>
+        <boxGeometry args={[29.4, 0.25, 120.4]} />
+        <meshStandardMaterial color="#f3e3c2" roughness={0.7} />
+      </mesh>
+      {/* Tube battens over the track (mounted, always lit). */}
+      {[0].map((lx) =>
+        [-10, 0, 10].map((dz) => (
+          <mesh key={`${lx}:${dz}`} position={[lx, 6.85, dz]}>
+            <boxGeometry args={[1.4, 0.12, 0.5]} />
+            <meshBasicMaterial color="#fff3d0" toneMapped={false} />
+          </mesh>
+        )),
+      )}
+      {/* Single name board on the south fascia, readable both ways. */}
+      {sign && (
+        <>
+          <mesh position={[24.2, 5.8, 0]} rotation-y={Math.PI / 2}>
+            <planeGeometry args={[10, 2]} />
+            <primitive object={boardMaterial(sign)} attach="material" />
+          </mesh>
+          <mesh position={[24.2, 5.8, 0]} rotation-y={-Math.PI / 2}>
+            <planeGeometry args={[10, 2]} />
+            <primitive object={boardMaterial(sign)} attach="material" />
+          </mesh>
+        </>
+      )}
+      {/* Hanging platform number board over the western track: 1.
+      (Northern expresses pass through without stopping here.) */}
+      {[{ tex: one, lx: 0 }].map(({ tex, lx }, i) => (
+        <group key={i} position={[lx, 0, 0]}>
+          {[-0.5, 0.5].map((dx) => (
+            <mesh key={dx} position={[dx, 5.6, 0]}>
+              <cylinderGeometry args={[0.03, 0.03, 1.6, 6]} />
+              <meshStandardMaterial color="#2c2f34" roughness={0.8} />
+            </mesh>
+          ))}
+          {tex && (
+            <>
+              <mesh position={[0, 4.6, 0.02]}>
+                <planeGeometry args={[3.2, 0.8]} />
+                <primitive object={boardMaterial(tex)} attach="material" />
+              </mesh>
+              <mesh position={[0, 4.6, -0.02]} rotation-y={Math.PI}>
+                <planeGeometry args={[3.2, 0.8]} />
+                <primitive object={boardMaterial(tex)} attach="material" />
               </mesh>
             </>
           )}
@@ -1016,11 +1385,11 @@ function ChennaiTerminus({ worldRef }: { worldRef?: RefObject<GameWorld> }) {
           <>
             <mesh position={[25.4, 5.8, 0]} rotation-y={Math.PI / 2}>
               <planeGeometry args={[12, 2.4]} />
-              <meshStandardMaterial map={sign} roughness={0.7} />
+              <primitive object={boardMaterial(sign)} attach="material" />
             </mesh>
             <mesh position={[25.4, 5.8, 0]} rotation-y={-Math.PI / 2}>
               <planeGeometry args={[12, 2.4]} />
-              <meshStandardMaterial map={sign} roughness={0.7} />
+              <primitive object={boardMaterial(sign)} attach="material" />
             </mesh>
           </>
         )}
@@ -1041,11 +1410,11 @@ function ChennaiTerminus({ worldRef }: { worldRef?: RefObject<GameWorld> }) {
               <>
                 <mesh position={[0, 4.6, 0.02]}>
                   <planeGeometry args={[3.2, 0.8]} />
-                  <meshStandardMaterial map={tex} roughness={0.6} />
+                  <primitive object={boardMaterial(tex)} attach="material" />
                 </mesh>
                 <mesh position={[0, 4.6, -0.02]} rotation-y={Math.PI}>
                   <planeGeometry args={[3.2, 0.8]} />
-                  <meshStandardMaterial map={tex} roughness={0.6} />
+                  <primitive object={boardMaterial(tex)} attach="material" />
                 </mesh>
               </>
             )}
@@ -1117,6 +1486,8 @@ export default function Railway({ worldRef }: { worldRef?: RefObject<GameWorld> 
 
   return (
     <group>
+      {/* Night-driven sign glow (shared board materials, no per-mesh cost). */}
+      <BoardGlow worldRef={worldRef} />
       {/* Ballast beds (unit box scaled per piece) */}
       <instancedMesh ref={ballastRef} args={[undefined, undefined, pieces.length]} frustumCulled={false}>
         <boxGeometry args={[BALLAST_W, 0.18, 1]} />
@@ -1174,19 +1545,21 @@ export default function Railway({ worldRef }: { worldRef?: RefObject<GameWorld> 
       <ArakkonamJunction />
       {/* One shed over both Katpadi faces instead of two buildings */}
       <KatpadiJunction />
+      {/* One shed over both Erode faces instead of two buildings */}
+      <ErodeShed />
+      {/* One shed over both Madurai faces instead of two buildings */}
+      <MaduraiShed />
+      {/* One shed over both Virudhunagar faces instead of two buildings */}
+      <VirudhunagarShed />
+      {/* One shed over both Tirunelveli faces instead of two buildings */}
+      <TirunelveliShed />
       {/* One concourse over the Villupuram fan instead of three buildings */}
       <VillupuramJunction />
-      {/* One roof over the Villupuram N-S row: the single station */}
-      <VillupuramShed />
       {/* One roof over the Villupuram N-S row: the single station */}
       <VillupuramShed />
       {/* One shed over the Coimbatore row pair instead of two buildings */}
       <CoimbatoreShed />
       {/* Shared name boards for the double-track pair halts */}
-      <SharedNameSign aLine="southern" aIndex={4} bLine="port" bIndex={0} name="MADURAI" />
-      <SharedNameSign aLine="southern" aIndex={5} bLine="port" bIndex={1} name="VIRUDHUNAGAR" />
-      <SharedNameSign aLine="southern" aIndex={6} bLine="port" bIndex={2} name="TIRUNELVELI" />
-      <SharedNameSign aLine="western" aIndex={5} bLine="kongu" bIndex={2} name="ERODE" />
       <SharedNameSign aLine="western" aIndex={6} bLine="kongu" bIndex={1} name="TIRUPPUR" />
       {/* One concourse complex instead of four scattered Trichy buildings */}
       <TrichyJunction />

@@ -21,6 +21,7 @@ import {
   updateTrains,
 } from "@/lib/game/map/railway";
 import type { GameWorld } from "@/lib/game/state";
+import { updateTrain } from "@/lib/game/audio";
 import IndianRailwayCoach from "./IndianRailwayCoach";
 
 const CAR_W = 4;
@@ -198,7 +199,8 @@ function Loco({ flip = false }: { flip?: boolean }) {
 }
 
 function Coach({ lineId, carIndex, worldRef }: { lineId: string; carIndex: number; worldRef: RefObject<GameWorld> }) {
-  // Blue ICF-style general coach (coach numbers vary per position). Never
+  // Blue ICF-style general coach, same 4 x 14 m footprint as the engines
+  // so every compartment in the consist is engine-sized. Never
   // the tail anymore — the rear engine carries the end markers.
   return (
     <IndianRailwayCoach
@@ -231,8 +233,12 @@ export default function Train({ worldRef }: { worldRef: RefObject<GameWorld> }) 
     // Keep trains running live while the fullscreen map is open (mapOpen
     // pauses the player/bike sim, but the railway is real-time data).
     // Only the ESC pause menu fully freezes the consists.
-    if (world.paused && !world.mapOpen) return;
+    if (world.paused && !world.mapOpen) {
+      updateTrain(world, dt);
+      return;
+    }
     updateTrains(world, dt);
+    updateTrain(world, dt);
     for (const t of world.trains) {
       const cars = trainCarCenters(t.line, t.s, t.dir);
       for (let i = 0; i < cars.length; i++) {

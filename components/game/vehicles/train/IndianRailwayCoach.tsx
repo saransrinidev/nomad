@@ -1,7 +1,8 @@
 // IndianRailwayCoach — reusable blue ICF-style general passenger coach.
 // Visual-only: simulation, collision, boarding and prompts stay in
 // lib/game/map/railway.ts + Train.tsx (unchanged constants: 4 m wide,
-// floor top 0.95, doorways at z ±4.5, seat/berth anchors preserved).
+// 14 m long to match the engine, floor top 0.95, doorways at z ±4.5,
+// seat/berth anchors preserved).
 //
 // Cost control for integrated graphics: static parts are merged into a
 // few vertex-colored meshes (one draw call each), materials/textures are
@@ -33,7 +34,7 @@ export interface IndianRailwayCoachProps {
   carIndex: number;
   coachNumber?: string;
   worldRef: React.RefObject<GameWorld | null>;
-  /** Full length in meters (collision assumes the default 12). */
+  /** Full length in meters (matches the 14 m engine). */
   length?: number;
   /** Full width in meters (collision assumes the default 4). */
   width?: number;
@@ -44,10 +45,12 @@ export interface IndianRailwayCoachProps {
 const C = COACH_COLORS;
 const DOOR_AT = 4.5;
 const DOOR_HALF_W = 0.925;
-const WIN_CENTERS = [-2.6, -1.3, 0, 1.3, 2.6];
-const WIN_W = 1.1;
-const GLASS_LO = 1.86;
-const GLASS_HI = 2.62;
+// Wide picture windows: 5 per side nearly spanning the bay between the
+// doors (slim mullions read as one continuous window band).
+const WIN_CENTERS = [-2.72, -1.36, 0, 1.36, 2.72];
+const WIN_W = 1.25;
+const GLASS_LO = 1.78;
+const GLASS_HI = 2.7;
 
 // ---------------------------------------------------------------- shell ---
 
@@ -90,12 +93,13 @@ function shellParts(HL: number): PartSpec[] {
       if (len <= 0.02) continue;
       parts.push({ p: [x, 2.25, (z0 + z1) / 2], s: [T, 0.94, len], c: C.turquoise });
     }
-    // Window frames: sill / head / side posts (turquoise dark).
+    // Window frames: sill / head / side posts (turquoise dark). Slim
+    // sections (shared mullion band — neighbors must not overlap).
     for (const z of WIN_CENTERS) {
-      parts.push({ p: [x, GLASS_LO - 0.04, z], s: [T + 0.02, 0.08, WIN_W + 0.16], c: C.turquoiseDark });
-      parts.push({ p: [x, GLASS_HI + 0.04, z], s: [T + 0.02, 0.08, WIN_W + 0.16], c: C.turquoiseDark });
-      for (const dz of [-WIN_W / 2 - 0.04, WIN_W / 2 + 0.04]) {
-        parts.push({ p: [x, (GLASS_LO + GLASS_HI) / 2, z + dz], s: [T + 0.02, GLASS_HI - GLASS_LO + 0.16, 0.08], c: C.turquoiseDark });
+      parts.push({ p: [x, GLASS_LO - 0.04, z], s: [T + 0.02, 0.08, WIN_W + 0.02], c: C.turquoiseDark });
+      parts.push({ p: [x, GLASS_HI + 0.04, z], s: [T + 0.02, 0.08, WIN_W + 0.02], c: C.turquoiseDark });
+      for (const dz of [-WIN_W / 2 - 0.01, WIN_W / 2 + 0.01]) {
+        parts.push({ p: [x, (GLASS_LO + GLASS_HI) / 2, z + dz], s: [T + 0.02, GLASS_HI - GLASS_LO + 0.16, 0.06], c: C.turquoiseDark });
       }
     }
     // Door frame posts (2.1 m clear) + header track + frieze lintel.
@@ -227,7 +231,27 @@ function interiorParts(HL: number): PartSpec[] {
       const len = z1 - z0;
       if (len <= 0.01) continue;
       const zc = (z0 + z1) / 2;
-      parts.push({ p: [x, 1.85, zc], s: [0.04, 1.7, len], c: C.interiorCream });
+      // Window bay (the long middle stretch): leave the window band open
+      // so the big side windows are genuinely see-through into the cabin —
+      // liner pillars between the openings + a strip below the sills. End
+      // stretches have no windows and keep the full liner.
+      if (len > 4) {
+        let cur = z0;
+        for (const wz of WIN_CENTERS) {
+          const o0 = wz - WIN_W / 2;
+          if (o0 - cur > 0.02) {
+            parts.push({ p: [x, 1.85, (cur + o0) / 2], s: [0.04, 1.7, o0 - cur], c: C.interiorCream });
+          }
+          cur = wz + WIN_W / 2;
+        }
+        if (z1 - cur > 0.02) {
+          parts.push({ p: [x, 1.85, (cur + z1) / 2], s: [0.04, 1.7, z1 - cur], c: C.interiorCream });
+        }
+        // Below-sill strip (floor dado top 1.0 → glass sill).
+        parts.push({ p: [x, (1.0 + GLASS_LO) / 2, zc], s: [0.04, GLASS_LO - 1.0, len], c: C.interiorCream });
+      } else {
+        parts.push({ p: [x, 1.85, zc], s: [0.04, 1.7, len], c: C.interiorCream });
+      }
       parts.push({ p: [x, 1.15, zc], s: [0.045, 0.35, len], c: C.interiorBlue });
     }
     // Longitudinal wooden benches (seat top 1.5 = SEAT_TOP_Y).
@@ -303,14 +327,21 @@ function roofParts(HL: number): PartSpec[] {
 
 function doorLeafParts(): PartSpec[] {
   const W = DOOR_HALF_W * 2; // 1.85
+  const OW = 0.8; // open window width (genuinely see-through)
+  const OLO = 2.1; // window opening bottom
+  const OHI = 2.9; // window opening top
+  const stileW = (W - OW) / 2;
   return [
-    // Sliding panel: 2.05 m tall (0.95–3.0 clear opening).
-    { p: [0, 1.975, 0], s: [0.08, 2.05, W], c: C.deepBlue },
-    // Dark window inset + steel bars over it.
-    { p: [0, 2.5, 0], s: [0.07, 0.7, 0.62], c: C.glassDark },
-    { p: [0, 2.36, 0], s: [0.11, 0.045, 0.62], c: C.steel },
-    { p: [0, 2.5, 0], s: [0.11, 0.045, 0.62], c: C.steel },
-    { p: [0, 2.64, 0], s: [0.11, 0.045, 0.62], c: C.steel },
+    // Sliding panel: 2.05 m tall (0.95–3.0 clear opening), built as a
+    // frame around a real window opening (no solid inset to block views).
+    { p: [0, (0.95 + OLO) / 2, 0], s: [0.08, OLO - 0.95, W], c: C.deepBlue },
+    { p: [0, (OHI + 3.0) / 2, 0], s: [0.08, 3.0 - OHI, W], c: C.deepBlue },
+    { p: [0, (OLO + OHI) / 2, OW / 2 + stileW / 2], s: [0.08, OHI - OLO, stileW], c: C.deepBlue },
+    { p: [0, (OLO + OHI) / 2, -OW / 2 - stileW / 2], s: [0.08, OHI - OLO, stileW], c: C.deepBlue },
+    // Steel bars over the opening.
+    { p: [0, 2.32, 0], s: [0.11, 0.045, OW], c: C.steel },
+    { p: [0, 2.5, 0], s: [0.11, 0.045, OW], c: C.steel },
+    { p: [0, 2.68, 0], s: [0.11, 0.045, OW], c: C.steel },
     // Yellow safety edge + recessed handle.
     { p: [0, 1.975, W / 2 - 0.04], s: [0.09, 2.05, 0.07], c: C.railYellow },
     { p: [0, 1.7, -W / 2 + 0.12], s: [0.1, 0.08, 0.18], c: C.underBlack },
@@ -348,13 +379,15 @@ export default function IndianRailwayCoach({
   const roofGeo = useMemo(() => mergeParts(roofParts(HL)), [HL]);
   const leafGeo = useMemo(() => mergeParts(doorLeafParts()), []);
   // Merged ceiling light strips (one mesh, faded with the roof).
+  // Length tracks the shell so 14 m engine-size coaches stay lit end to end.
+  const lampLen = HL * 2 - 4;
   const lampGeo = useMemo(
     () =>
       mergeParts([
-        { p: [-0.7, 2.96, 0], s: [0.3, 0.06, 8], c: "#fff6dc" },
-        { p: [0.7, 2.96, 0], s: [0.3, 0.06, 8], c: "#fff6dc" },
+        { p: [-0.7, 2.96, 0], s: [0.3, 0.06, lampLen], c: "#fff6dc" },
+        { p: [0.7, 2.96, 0], s: [0.3, 0.06, lampLen], c: "#fff6dc" },
       ]),
-    [],
+    [lampLen],
   );
 
   // Merged window glass (keeps UVs for the rounded-corner texture).
@@ -375,7 +408,7 @@ export default function IndianRailwayCoach({
   }, [HW]);
 
   // One shared leaf window-glass plane.
-  const leafGlassGeo = useMemo(() => new THREE.PlaneGeometry(0.6, 0.6), []);
+  const leafGlassGeo = useMemo(() => new THREE.PlaneGeometry(0.78, 0.7), []);
 
   // Door leaves (slide toward the car center when the train is stopped).
   // The roof of the specific car the player is inside fades transparent

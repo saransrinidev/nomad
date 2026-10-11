@@ -137,7 +137,7 @@ export function updateOnFoot(world: GameWorld, dt: number) {
 
   // Ride along when standing inside a moving coach (applied before input
   // so WASD stays relative to the car).
-  const carry = carryDelta(world.playerPos.x, world.playerPos.z);
+  const carry = carryDelta(world.playerPos.x, world.playerPos.z, world.playerPos.y);
   world.playerPos.x += carry.dx;
   world.playerPos.z += carry.dz;
 
@@ -173,7 +173,7 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   world.playerPos.x = fixed.x;
   world.playerPos.z = fixed.z;
   // Don't stand through the shuttle train.
-  const tf = collideTrain(world.playerPos.x, world.playerPos.z, 0.5);
+  const tf = collideTrain(world.playerPos.x, world.playerPos.z, 0.5, world.playerPos.y);
   world.playerPos.x = tf.x;
   world.playerPos.z = tf.z;
   // Station walls, posts and furniture are solid (stairs stay walkable).

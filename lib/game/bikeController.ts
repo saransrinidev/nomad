@@ -166,7 +166,7 @@ export function updateBike(world: GameWorld, dt: number) {
   world.bikePos.y = groundHeight(world.bikePos.x, world.bikePos.z);
 
   const fixed = collideWorld(world.bikePos.x, world.bikePos.z);
-  const tf = collideTrain(fixed.x, fixed.z, 1.1);
+  const tf = collideTrain(fixed.x, fixed.z, 1.1, world.bikePos.y);
   // Bikes can't drive through platforms or station furniture either.
   const sc = collideStation(tf.x, tf.z, 1.1, world.bikePos.y);
   // ...nor through station buildings (concourse halls).

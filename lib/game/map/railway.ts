@@ -18,7 +18,9 @@ export const TRAIN_ACCEL = 5;
 export const TRAIN_BRAKE = 4.5;
 
 export const LOCO_LEN = 14;
-export const COACH_LEN = 12;
+/** Coaches match the engine footprint (14 m) so every car in the
+ * consist is one equal-size compartment. */
+export const COACH_LEN = 14;
 export const COACH_GAP = 1.2;
 export const LOCO_GAP = 1.5;
 /** Nose-to-tail length of a twin-loco + 4-coach push-pull consist. */
@@ -133,6 +135,28 @@ export const LINES: LineDef[] = [
     ],
     // First departure 09:00 — docked at Chennai with doors open until then.
     startAt: 9,
+    // Erode approach funnels: the corridor runs diagonal (Salem NE,
+    // Tiruppur SW) but the station is locked dead E-W, so ~600 m curves
+    // ease the spline onto the station axis well before the straightening
+    // zone — no kink at the platform ends. Turns are staggered (western
+    // bends from x≈300, kongu holds its axis until x≈300) so the
+    // unavoidable NE/SE scissors reads as one steep rural diamond
+    // (~310 m out) instead of a long overlap.
+    throatLeads: [
+      {
+        station: 5,
+        before: [
+          { px: 600, pz: -350 },
+          { px: 500, pz: -150 },
+          { px: 300, pz: -5 },
+        ],
+        after: [
+          { px: -120, pz: 18 },
+          { px: -300, pz: 70 },
+          { px: -550, pz: 150 },
+        ],
+      },
+    ],
     stations: [
       // Shared Chennai terminus: same real-world station as Route 1, laid
       // on the pure-lateral offset (11 m ESE) so all three dwells sit
@@ -144,7 +168,9 @@ export const LINES: LineDef[] = [
       { name: "Katpadi Junction", short: "KATPADI", lon: 79.1556, lat: 12.9698, lockYaw: -Math.PI / 2 },
       { name: "Jolarpettai Junction", short: "JOLARPETTAI", lon: 78.5724, lat: 12.5654 },
       { name: "Salem Junction", short: "SALEM", lon: 78.1401, lat: 11.652 },
-      { name: "Erode Junction", short: "ERODE", lon: 77.7245, lat: 11.2756 },
+      // Erode row slot: locked dead E-W with the kongu face 14 m north so
+      // both tracks run straight and parallel under one roof.
+      { name: "Erode Junction", short: "ERODE", lon: 77.7245, lat: 11.2756, lockYaw: -Math.PI / 2 },
       { name: "Tiruppur", short: "TIRUPPUR", lon: 77.3395, lat: 11.1088 },
       // Coimbatore terminus face locked dead E-W with the row pair.
       { name: "Coimbatore Junction", short: "COIMBATORE", lon: 76.9597, lat: 11.0007, lockYaw: -Math.PI / 2 },
@@ -191,6 +217,61 @@ export const LINES: LineDef[] = [
           { px: -430, pz: 250 },
         ],
       },
+      {
+        // Madurai N-S throat: the corridor runs diagonal (Dindigul NNE,
+        // Virudhunagar SSW) but the faces lock dead N-S, so curves ease
+        // each line onto the row axis before the straightening zone.
+        // Both lines share identical relatives (+12 m apart throughout).
+        // Funnels stay clear of Virudhunagar's (1027 m gap — exit ends at
+        // +320, entry starts at +636 rel Madurai: plain countryside
+        // between, never interleaved, never zigzag).
+        station: 4,
+        before: [
+          { px: -70, pz: -550 },
+          { px: -35, pz: -300 },
+          { px: -15, pz: -180 },
+        ],
+        after: [
+          { px: -25, pz: 180 },
+          { px: -50, pz: 250 },
+          { px: -75, pz: 320 },
+        ],
+      },
+      {
+        // Virudhunagar N-S throat: same treatment (Madurai NNE,
+        // Tirunelveli SSW arms). Entry funnel starts north of Madurai's
+        // exit funnel end — no overlap between the stations.
+        station: 5,
+        before: [
+          { px: 75, pz: -320 },
+          { px: 50, pz: -250 },
+          { px: 25, pz: -180 },
+        ],
+        after: [
+          { px: -20, pz: 180 },
+          { px: -45, pz: 300 },
+          { px: -90, pz: 550 },
+        ],
+      },
+      {
+        // Tirunelveli N-S throat: gentle SSW corner (Virudhunagar −17°,
+        // Nagercoil −25°). Compact funnels hug close to the row axis (max
+        // ~90 m excursion) — no wide pointless S-curves, just a short
+        // easement into the dead-straight station pair. Inner leads sit
+        // outside the straightener feather. Identical relatives on the
+        // port line (+14 m apart throughout).
+        station: 6,
+        before: [
+          { px: 90, pz: -550 },
+          { px: 45, pz: -300 },
+          { px: 20, pz: -180 },
+        ],
+        after: [
+          { px: -20, pz: 250 },
+          { px: -45, pz: 450 },
+          { px: -90, pz: 650 },
+        ],
+      },
     ],
     stations: [
       // Own Egmore terminus, nudged 15 m west so its throat clears the
@@ -204,9 +285,14 @@ export const LINES: LineDef[] = [
       // parallel line-by-line.
       { name: "Tiruchchirappalli Junction", short: "TRICHY JN", lon: 78.6856, lat: 10.7905, px: 0, pz: -14, lockYaw: -Math.PI / 2 },
       { name: "Dindigul Junction", short: "DINDIGUL", lon: 77.983, lat: 10.3577 },
-      { name: "Madurai Junction", short: "MADURAI", lon: 78.1023, lat: 9.9194 },
-      { name: "Virudhunagar Junction", short: "VIRUDHUNAGAR", lon: 77.9624, lat: 9.568 },
-      { name: "Tirunelveli Junction", short: "TIRUNELVELI", lon: 77.7079, lat: 8.7359 },
+      // Madurai row slot: locked dead N-S with the port face 12 m east —
+      // straight parallel tracks under one shared roof.
+      { name: "Madurai Junction", short: "MADURAI", lon: 78.1023, lat: 9.9194, lockYaw: 0 },
+      // Virudhunagar row slot: same N-S pair treatment as Madurai.
+      { name: "Virudhunagar Junction", short: "VIRUDHUNAGAR", lon: 77.9624, lat: 9.568, lockYaw: 0 },
+      // Tirunelveli row slot: locked dead N-S with the port face 14 m east
+      // (same island+outer layout as Arakkonam) under one shared roof.
+      { name: "Tirunelveli Junction", short: "TIRUNELVELI", lon: 77.7079, lat: 8.7359, lockYaw: 0 },
       { name: "Nagercoil Junction", short: "NAGERCOIL", lon: 77.4373, lat: 8.1757 },
       { name: "Kanniyakumari", short: "KANNIYAKUMARI", lon: 77.5385, lat: 8.0883 },
     ],
@@ -245,12 +331,59 @@ export const LINES: LineDef[] = [
     coachCount: 6,
     // First departure 10:30.
     startAt: 10.5,
+    // Madurai + Virudhunagar N-S throats: identical relatives to the
+    // southern funnels (the +12 m base offset keeps the pair parallel).
+    // Madurai is station 0 (terminus — exit side only). Exit funnel ends
+    // well north of Virudhunagar's entry funnel start (no overlap).
+    throatLeads: [
+      {
+        station: 0,
+        after: [
+          { px: -25, pz: 180 },
+          { px: -50, pz: 250 },
+          { px: -75, pz: 320 },
+        ],
+      },
+      {
+        station: 1,
+        before: [
+          { px: 75, pz: -320 },
+          { px: 50, pz: -250 },
+          { px: 25, pz: -180 },
+        ],
+        after: [
+          { px: -20, pz: 180 },
+          { px: -45, pz: 300 },
+          { px: -90, pz: 550 },
+        ],
+      },
+      {
+        // Tirunelveli N-S throat: gentle entry from Virudhunagar (same
+        // 1 km funnel as the southern face). The Tiruchendur exit runs
+        // due south past the southern platform's tip (rails must stay
+        // east of x≈+9.6 while z<85) and only then swings ESE — clean
+        // station throat, no clipping, no X-splay at the platforms.
+        station: 2,
+        before: [
+          { px: 90, pz: -550 },
+          { px: 45, pz: -300 },
+          { px: 20, pz: -180 },
+        ],
+        after: [
+          { px: 0, pz: 180 },
+          { px: -9, pz: 300 },
+          { px: 46, pz: 450 },
+          { px: 186, pz: 600 },
+        ],
+      },
+    ],
     stations: [
       // Double-track corridor with Route 3 (Madurai → Tirunelveli):
-      // parallel faces 12 m east, same names, dwells side-by-side.
-      { name: "Madurai Junction", short: "MADURAI", lon: 78.1023, lat: 9.9194, px: 12 },
-      { name: "Virudhunagar Junction", short: "VIRUDHUNAGAR", lon: 77.9624, lat: 9.568, px: 12 },
-      { name: "Tirunelveli Junction", short: "TIRUNELVELI", lon: 77.7079, lat: 8.7359, px: 14 },
+      // parallel faces 12–14 m east, same names, dwells side-by-side. All
+      // three faces lock dead N-S with the southern row (one roof each).
+      { name: "Madurai Junction", short: "MADURAI", lon: 78.1023, lat: 9.9194, px: 12, lockYaw: 0 },
+      { name: "Virudhunagar Junction", short: "VIRUDHUNAGAR", lon: 77.9624, lat: 9.568, px: 12, lockYaw: 0 },
+      { name: "Tirunelveli Junction", short: "TIRUNELVELI", lon: 77.7079, lat: 8.7359, px: 14, lockYaw: 0 },
       { name: "Tiruchendur", short: "TIRUCHENDUR", lon: 78.1188, lat: 8.4958 },
       { name: "Thoothukudi", short: "THOOTHUKUDI", lon: 78.131, lat: 8.8072 },
     ],
@@ -269,7 +402,13 @@ export const LINES: LineDef[] = [
       // run parallel, never touching.
       { name: "Coimbatore Junction", short: "COIMBATORE", lon: 76.9597, lat: 11.0007, pz: -20, lockYaw: Math.PI / 2 },
       { name: "Tiruppur", short: "TIRUPPUR", lon: 77.3395, lat: 11.1088, pz: -20 },
-      { name: "Erode Junction", short: "ERODE", lon: 77.7245, lat: 11.2756, pz: -20 },
+      // Erode row slot: 14 m north of the western face, locked dead E-W
+      // with it — straight parallel tracks under one shared roof. Yaw is
+      // +π/2 (not -π/2): the kongu consist travels west→east here, and the
+      // straightener pins along the tangent in travel order — a flipped
+      // tangent would drag the approach across the station into a hairpin.
+      // Platforms land on the outer sides of the pair, Coimbatore-style.
+      { name: "Erode Junction", short: "ERODE", lon: 77.7245, lat: 11.2756, pz: -14, lockYaw: Math.PI / 2 },
       { name: "Karur Junction", short: "KARUR", lon: 78.0733, lat: 10.9601 },
       // Own Trichy terminus face: back row slot (z=-28), locked dead
       // level, dwell centered with the row, buffer wall east.
@@ -279,8 +418,27 @@ export const LINES: LineDef[] = [
       { px: 45, pz: -3 },
       { px: 100, pz: -6 },
     ],
+    // Erode approach funnels: same treatment as the western face — ~600 m
+    // curves onto the shared E-W axis. West-side leads hold 28–34 m off
+    // the western funnel (same ordering throughout, never crossing); the
+    // east side holds the axis until x≈300 then climbs toward Karur (the
+    // single scissors crossing sits ~310 m out at ~35°, clear of the
+    // platforms).
     // Trichy approach runway: straight E-W rails ~500 m into the corridor.
     throatLeads: [
+      {
+        station: 2,
+        before: [
+          { px: -550, pz: 130 },
+          { px: -300, pz: 50 },
+          { px: -120, pz: 4 },
+        ],
+        after: [
+          { px: 300, pz: 0 },
+          { px: 500, pz: 120 },
+          { px: 700, pz: 330 },
+        ],
+      },
       { station: 4, before: [{ px: -520, pz: 0 }, { px: -260, pz: 0 }, { px: -140, pz: 0 }] },
     ],
   },
@@ -299,11 +457,11 @@ export const LINES: LineDef[] = [
       // one station everywhere.
       { name: "Chennai Central", short: "CHENNAI", lon: 80.2707, lat: 13.0827, px: 15.6, pz: 15.6, lockYaw: -Math.PI / 4 },
       { name: "Kancheepuram", short: "KANCHIPURAM", lon: 79.7065, lat: 12.8426 },
-      // Arakkonam face: second row slot (14 m SOUTH of Route 2 — same side
-      // as its platform). The Kanchipuram approach stays south throughout,
-      // so these rails never touch Route 2's track or platform: fully
-      // grade-separated double track. Locked dead level.
-      { name: "Arakkonam Junction", short: "ARAKKONAM", lon: 79.6696, lat: 13.0768, px: 0, pz: 14, lockYaw: -Math.PI / 2 },
+      // NOTE: no Arakkonam stop on this line on purpose. The Kanchipuram
+      // arm meets the Katpadi arm in a ~95° corner that no straight dwell
+      // can serve without a 15–38° kink (proven across a dozen funnel/pin
+      // combos) — northern expresses pass through cleanly instead, while
+      // Route 2's face keeps full Arakkonam service 100 m north.
       // Katpadi face: second row slot (14 m NORTH of Route 2 — opposite
       // side from its platform). Locked dead level with it; funnel leads
       // bend the Arakkonam approach parallel before the platforms. Same
@@ -319,21 +477,12 @@ export const LINES: LineDef[] = [
       { px: -45, pz: 45 },
       { px: -100, pz: 100 },
     ],
-    // Arakkonam funnel: due-south approach running parallel to Route 2's
-    // line, joining the row from the south (never crosses it).
     // Katpadi funnel: eastern approach running parallel to Route 2's
     // entry curve, joining the row from the east (never crosses it).
+    // (No Arakkonam entry: northern expresses run straight through.)
     throatLeads: [
       {
         station: 2,
-        before: [
-          { px: 60, pz: 420 },
-          { px: 30, pz: 220 },
-          { px: 10, pz: 90 },
-        ],
-      },
-      {
-        station: 3,
         before: [
           { px: 500, pz: -166 },
           { px: 250, pz: -66 },
@@ -796,6 +945,11 @@ const segments = new Map<string, TrainSegment>();
 const liveCars = new Map<string, { x: number; y: number; z: number; yaw: number }[]>();
 const prevLiveCars = new Map<string, { x: number; y: number; z: number; yaw: number }[]>();
 const stoppedLines = new Set<string>();
+/** Line whose coach the on-foot player legitimately boarded (granted only
+ * while the consist is stopped; preserved while riding standing up).
+ * Lets collideTrain tell riders apart from bodies a moving consist ran
+ * into — riders keep interior freedom, everyone else gets ejected. */
+let onboardLine: string | null = null;
 
 function stepTrain(t: TrainSimState, dt: number, now: number): void {
   const r = getLine(t.line);
@@ -939,12 +1093,19 @@ export function lineDeparture(lineId: string, t: TrainSimState, now: number): De
   }
   ahead.sort((a, b) => a.d - b.d);
   const cruise = line.def.topSpeed ?? TRAIN_SPEED;
-  const upcoming = ahead.slice(0, 3).map((a) => ({
-    name: a.name,
-    // Real seconds at cruise ≈ game-minutes (1 real min = 1 game hour);
-    // +10% covers the accel/brake curves.
-    etaClock: formatTime(now + ((a.d / cruise) * 1.1) / 3600),
-  }));
+  // Real seconds at cruise ≈ game-minutes (1 real min = 1 game hour, so
+  // real seconds / 60 = game hours); +10% covers the accel/brake curves.
+  // Dwell at each intermediate stop accumulates — the 2nd/3rd ETAs include
+  // the hour-long dwells before them, matching the true timetable.
+  let acc = 0;
+  let prevD = 0;
+  const upcoming = ahead.slice(0, 3).map((a) => {
+    acc += ((a.d - prevD) / cruise) * 1.1 / 60;
+    const etaClock = formatTime(now + acc);
+    prevD = a.d;
+    acc += line.def.dwell / 60;
+    return { name: a.name, etaClock };
+  });
   return { title: `${line.def.title.toUpperCase()} → ${dest}`, status, upcoming };
 }
 
@@ -980,17 +1141,26 @@ function inDoorBand(lz: number, pad: number): boolean {
 /**
  * Coach wall collision with physical doorways. Side walls push out except
  * at the doorway bands while the line is stopped (doors "open" only at
- * stations); end walls + loco are always solid. Replaces the old capsule.
+ * stations); end walls + loco are always solid. Entry is height-gated: only
+ * bodies with feet near floor level (same threshold as the floor catch in
+ * surfaceY) may pass a doorway or roam the cabin — walking into the train
+ * at ground level is solid wall, never a free walk under the floor. A
+ * MOVING shell is sealed: bodies it runs into are knocked clear sideways
+ * (never embedded, never scooped forward), and anyone caught inside who
+ * didn't board while stopped is ejected — legit standing riders (see
+ * onboardLine) keep full interior freedom. Replaces the old capsule.
  */
 export function collideTrain(
   x: number,
   z: number,
   radius: number,
+  py = -Infinity,
 ): { x: number; z: number } {
   let px = x;
   let pz = z;
   for (const [lineId, cars] of liveCars) {
     const stopped = stoppedLines.has(lineId);
+    const moving = !stopped;
     const line = getLine(lineId);
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
@@ -1000,7 +1170,10 @@ export function collideTrain(
       const alx = Math.abs(lx);
       const alz = Math.abs(lz);
       if (alx > TRAIN_HALF_W + radius || alz > halfLen + radius) continue;
-      const doorsOpen = stopped && i > 0 && i < last && inDoorBand(lz, radius * 0.5);
+      // Feet near the coach floor? (Matches the surfaceY floor catch:
+      // platform tops sit flush with it, ground is ~0.95 below it.)
+      const highEnough = py > c.y + COACH_FLOOR_Y - 0.6;
+      const doorsOpen = stopped && highEnough && i > 0 && i < last && inDoorBand(lz, radius * 0.5);
       // Side walls: solid from the outside (except open doorways), but
       // free once inside so riders can walk the cabin and ride standing.
       // Crossing outward is bounced back unless through an open doorway
@@ -1013,13 +1186,29 @@ export function collideTrain(
       // riders can never walk into the solid engine meshes.
       const inGangway = i > 0 && i < cars.length - 1 && alx < 0.55 + radius * 0.5;
       if (insideShell) {
+        if (!highEnough || (moving && onboardLine !== lineId)) {
+          // Under the floor (walked in at ground level) or ran into by a
+          // moving consist — eject sideways to where you stood instead of
+          // embedding inside the bodywork (longitudinal spot preserved,
+          // only the sideways penetration is corrected).
+          const s = lx >= 0 ? 1 : -1;
+          const rx = Math.cos(c.yaw);
+          const rz = -Math.sin(c.yaw);
+          const fx = Math.sin(c.yaw);
+          const fz = Math.cos(c.yaw);
+          px = c.x + rx * s * (TRAIN_HALF_W + radius) + fx * lz;
+          pz = c.z + rz * s * (TRAIN_HALF_W + radius) + fz * lz;
+          continue;
+        }
         const atWall = alx > TRAIN_HALF_W - radius;
         if (atWall && !(doorsOpen && inDoorBand(lz, 0))) {
           const s = lx >= 0 ? 1 : -1;
           const rx = Math.cos(c.yaw);
           const rz = -Math.sin(c.yaw);
-          px = c.x + rx * s * (TRAIN_HALF_W - radius);
-          pz = c.z + rz * s * (TRAIN_HALF_W - radius);
+          const fx = Math.sin(c.yaw);
+          const fz = Math.cos(c.yaw);
+          px = c.x + rx * s * (TRAIN_HALF_W - radius) + fx * lz;
+          pz = c.z + rz * s * (TRAIN_HALF_W - radius) + fz * lz;
         }
         // End walls hold from the inside too (gangway stays walkable).
         const loc = carLocal(c, px, pz);
@@ -1036,20 +1225,35 @@ export function collideTrain(
         continue;
       }
       if (!doorsOpen && sidePen > 0 && sidePen <= endPen && alz < halfLen + radius) {
+        // Side-step out: keep your longitudinal spot, fix only the depth.
         const s = lx >= 0 ? 1 : -1;
         const rx = Math.cos(c.yaw);
         const rz = -Math.sin(c.yaw);
-        px = c.x + rx * s * (TRAIN_HALF_W + radius);
-        pz = c.z + rz * s * (TRAIN_HALF_W + radius);
+        const fx = Math.sin(c.yaw);
+        const fz = Math.cos(c.yaw);
+        px = c.x + rx * s * (TRAIN_HALF_W + radius) + fx * lz;
+        pz = c.z + rz * s * (TRAIN_HALF_W + radius) + fz * lz;
         continue;
       }
       // End walls solid except the open gangway (|lx| < 0.55) between cars.
+      // A moving nose/tail knocks clear sideways (never scoops bodies
+      // forward), so you stay where you stood, just off the rails.
       if (!inGangway && endPen > 0 && endPen < sidePen && alx < TRAIN_HALF_W + radius) {
-        const s = lz >= 0 ? 1 : -1;
-        const fx = Math.sin(c.yaw);
-        const fz = Math.cos(c.yaw);
-        px = c.x + fx * s * (halfLen + radius);
-        pz = c.z + fz * s * (halfLen + radius);
+        if (moving) {
+          const s = lx >= 0 ? 1 : -1;
+          const rx = Math.cos(c.yaw);
+          const rz = -Math.sin(c.yaw);
+          const fx = Math.sin(c.yaw);
+          const fz = Math.cos(c.yaw);
+          px = c.x + rx * s * (TRAIN_HALF_W + radius) + fx * lz;
+          pz = c.z + rz * s * (TRAIN_HALF_W + radius) + fz * lz;
+        } else {
+          const s = lz >= 0 ? 1 : -1;
+          const fx = Math.sin(c.yaw);
+          const fz = Math.cos(c.yaw);
+          px = c.x + fx * s * (halfLen + radius);
+          pz = c.z + fz * s * (halfLen + radius);
+        }
       }
     }
   }
@@ -1109,8 +1313,12 @@ export function coachInteriorAt(x: number, z: number): { x: number; y: number; z
   }
   return null;
 }
-/** Rigid displacement of the coach under a point since last sim tick. */
-export function carryDelta(x: number, z: number): { dx: number; dz: number } {
+/** Rigid displacement of the coach under a point since last sim tick.
+ * Also tracks rider status: granted when inside a STOPPED coach with feet
+ * near floor level (physical boarding), preserved while riding standing,
+ * cleared once fully outside. collideTrain runs right after this each
+ * frame and reads it. */
+export function carryDelta(x: number, z: number, py = -Infinity): { dx: number; dz: number } {
   for (const [lineId, cars] of liveCars) {
     const prev = prevLiveCars.get(lineId);
     if (!prev || prev.length !== cars.length) continue;
@@ -1120,9 +1328,12 @@ export function carryDelta(x: number, z: number): { dx: number; dz: number } {
       const onGangway =
         Math.abs(lx) <= GANGWAY_HALF_W && Math.abs(lz) <= COACH_LEN / 2 + GANGWAY_HALF_W;
       if ((Math.abs(lx) > TRAIN_HALF_W || Math.abs(lz) > COACH_LEN / 2) && !onGangway) continue;
+      if (py <= cars[i].y + COACH_FLOOR_Y - 0.6) continue;
+      if (stoppedLines.has(lineId)) onboardLine = lineId;
       return { dx: cars[i].x - prev[i].x, dz: cars[i].z - prev[i].z };
     }
   }
+  onboardLine = null;
   return { dx: 0, dz: 0 };
 }
 
@@ -1149,12 +1360,13 @@ export const OPEN_PLATFORM_FACES: ReadonlySet<string> = new Set([
   "southern:2",
   "mannar:0",
   "kongu:4",
+  // Western Arakkonam face (bare under its own shed; northern expresses
+  // pass through without stopping here).
   "western:1",
-  "northern:2",
   // Villupuram fan complex (one concourse, three bare faces).
   "chennai:2",
   "southern:1",
-  "northern:5",
+  "northern:4",
   // Coimbatore row pair (one shed over both termini).
   "western:7",
   "kongu:0",
@@ -1171,7 +1383,7 @@ export const OPEN_PLATFORM_FACES: ReadonlySet<string> = new Set([
   "kongu:1",
   // Katpadi row pair (one shed over both faces).
   "western:2",
-  "northern:3",
+  "northern:2",
 ]);
 
 /** Platform footprints (pos/yaw/length from the station builder math). */
@@ -1351,6 +1563,110 @@ export function collideStation(
     }
   }
   return { x: px, z: pz };
+}
+
+// --- Station roof collision (single source of truth for the roof
+// footprints rendered in Railway.tsx: same centers, sizes, yaw). Used by
+// the third-person camera so it never clips through shed/shelter roofs —
+// players and bikes never reach roof height, so they need no change. ---
+
+export interface StationRoof {
+  x: number;
+  z: number;
+  yaw: number;
+  halfW: number;
+  halfL: number;
+  /** World Y of the roof UNDERSIDE (camera stays below this). */
+  underY: number;
+}
+
+/** Faces drawn by ChennaiTerminus itself (mirrors Railway.tsx). */
+const TERMINUS_KEYS: ReadonlySet<string> = new Set(["chennai:0", "western:0"]);
+
+/** All station roofs: 7 grand sheds + 2 concourse halls + the small
+ * shelter roof on every full (non-bare) platform. Static world geometry —
+ * cached after the first call. */
+let roofCache: StationRoof[] | null = null;
+export function stationRoofs(): StationRoof[] {
+  if (roofCache) return roofCache;
+  const out: StationRoof[] = [];
+  // Grand sheds (dims mirror the shed components in Railway.tsx; local
+  // centers converted to world for yawed frames).
+  {
+    const w = getLine("western").stations[0];
+    const gy = groundHeight(w.x, w.z);
+    // Roof slab sits at local (3, 0) inside the yawed frame.
+    const rcx = w.x + 3 * Math.cos(w.yaw);
+    const rcz = w.z - 3 * Math.sin(w.yaw);
+    out.push({ x: rcx, z: rcz, yaw: w.yaw, halfW: 22, halfL: 75, underY: gy + 6.9 }); // ChennaiTerminus 44x150
+    const v = getLine("chennai").stations[2];
+    const vgy = groundHeight(v.x + 16.5, v.z);
+    out.push({ x: v.x + 16.5, z: v.z, yaw: 0, halfW: 24.5, halfL: 70, underY: vgy + 6.9 }); // VillupuramShed 49x140
+    const t = getLine("chennai").stations[8];
+    const tgy = groundHeight(t.x, t.z - 8);
+    out.push({ x: t.x, z: t.z - 8, yaw: 0, halfW: 70, halfL: 30, underY: tgy + 6.9 }); // TrichyShed 140x60
+    const r = getLine("western").stations[7];
+    out.push({ x: r.x, z: r.z - 10, yaw: r.yaw, halfW: 22, halfL: 70, underY: groundHeight(r.x, r.z) + 6.9 }); // CoimbatoreShed 44x140
+    const k = getLine("western").stations[2];
+    out.push({ x: k.x, z: k.z - 2.5, yaw: k.yaw, halfW: 15.5, halfL: 60, underY: groundHeight(k.x, k.z) + 6.9 }); // KatpadiJunction 31x120
+    const ar = getLine("western").stations[1];
+    out.push({ x: ar.x, z: ar.z + 9.5, yaw: ar.yaw, halfW: 14.5, halfL: 60, underY: groundHeight(ar.x, ar.z) + 6.9 }); // ArakkonamJunction 29x120
+    const e = getLine("western").stations[5];
+    out.push({ x: e.x, z: e.z - 7, yaw: e.yaw, halfW: 19, halfL: 70, underY: groundHeight(e.x, e.z) + 6.9 }); // ErodeShed 38x140
+    const m = getLine("southern").stations[4];
+    out.push({ x: m.x + 9, z: m.z, yaw: m.yaw, halfW: 15, halfL: 70, underY: groundHeight(m.x, m.z) + 6.9 }); // MaduraiShed 30x140
+    const vr = getLine("southern").stations[5];
+    out.push({ x: vr.x + 9, z: vr.z, yaw: vr.yaw, halfW: 15, halfL: 70, underY: groundHeight(vr.x, vr.z) + 6.9 }); // VirudhunagarShed 30x140
+    const ti = getLine("southern").stations[6];
+    out.push({ x: ti.x + 9.5, z: ti.z, yaw: ti.yaw, halfW: 14.5, halfL: 70, underY: groundHeight(ti.x, ti.z) + 6.9 }); // TirunelveliShed 29x140
+  }
+  // Concourse halls (TrichyJunction axis-aligned, VillupuramJunction yaw π/2).
+  {
+    const t = getLine("chennai").stations[8];
+    const hx = t.x + 10;
+    const hz = t.z + 32;
+    out.push({ x: hx, z: hz, yaw: 0, halfW: 18, halfL: 8, underY: groundHeight(hx, hz) + 5.0 });
+    const v = getLine("chennai").stations[2];
+    const vx = v.x - 40;
+    out.push({ x: vx, z: v.z, yaw: Math.PI / 2, halfW: 18, halfL: 8, underY: groundHeight(vx, v.z) + 5.0 });
+  }
+  // Small shelter roofs (5.5x15 at local y 3.6) on full platforms only —
+  // bare grand-station faces are covered by the sheds above, pair halts
+  // have no shelter at all.
+  for (const line of getLines()) {
+    for (let i = 0; i < line.stations.length; i++) {
+      const key = `${line.def.id}:${i}`;
+      if (OPEN_PLATFORM_FACES.has(key) || TERMINUS_KEYS.has(key)) continue;
+      const st = line.stations[i];
+      const rx = Math.cos(st.yaw);
+      const rz = -Math.sin(st.yaw);
+      out.push({
+        x: st.x + rx * 4.6,
+        z: st.z + rz * 4.6,
+        yaw: st.yaw,
+        halfW: 2.75,
+        halfL: 7.5,
+        underY: groundHeight(st.x, st.z) + 3.4,
+      });
+    }
+  }
+  roofCache = out;
+  return out;
+}
+
+/** Roof underside Y above a point, or null when in open sky (lowest roof
+ * wins under overlapping cover). */
+export function roofCeilingAt(x: number, z: number): number | null {
+  let best: number | null = null;
+  for (const r of stationRoofs()) {
+    const dx = x - r.x;
+    const dz = z - r.z;
+    const lx = Math.cos(r.yaw) * dx - Math.sin(r.yaw) * dz;
+    const lz = Math.sin(r.yaw) * dx + Math.cos(r.yaw) * dz;
+    if (Math.abs(lx) > r.halfW || Math.abs(lz) > r.halfL) continue;
+    if (best === null || r.underY < best) best = r.underY;
+  }
+  return best;
 }
 
 // --- Station building collision (single source of truth for the hall

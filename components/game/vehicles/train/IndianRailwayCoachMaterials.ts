@@ -53,10 +53,10 @@ export function coachMaterials(): Record<string, THREE.MeshStandardMaterial> {
   });
   const glass = new THREE.MeshStandardMaterial({
     color: COACH_COLORS.glassDark,
-    metalness: 0.4,
-    roughness: 0.15,
+    metalness: 0.55,
+    roughness: 0.08,
     transparent: true,
-    opacity: 0.62,
+    opacity: 0.42,
     side: THREE.DoubleSide,
   });
   const lampWarm = new THREE.MeshStandardMaterial({

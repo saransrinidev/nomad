@@ -24,7 +24,7 @@ import {
 } from "@/lib/game/gameConstants";
 import { getFocusPoint, type GameWorld } from "@/lib/game/state";
 import { groundHeight } from "@/lib/game/map/terrain";
-import { coachFloorAt, platformTopAt } from "@/lib/game/map/railway";
+import { coachFloorAt, platformTopAt, roofCeilingAt } from "@/lib/game/map/railway";
 
 const LOCK_SENSITIVITY = 0.0025;
 const HOLD_SENSITIVITY = 0.0042;
@@ -217,6 +217,13 @@ export default function ThirdPersonCamera({
     const camCoach = coachFloorAt(desired.x, desired.z);
     const camMin = Math.max(camGround, camPlat ?? -Infinity, camCoach ?? -Infinity) + 0.35;
     if (desired.y < camMin) desired.y = camMin;
+    // Station roofs: when the focus is under a shed/shelter/hall roof,
+    // keep the camera below the roof underside so it never clips through
+    // the roof mesh when zooming or pitching up.
+    const focusRoof = roofCeilingAt(focus.x, focus.z);
+    if (focusRoof !== null && desired.y > focusRoof - 0.3) {
+      desired.y = Math.max(camMin, focusRoof - 0.3);
+    }
 
     // Rigid follow: snap straight to the desired position.
     camera.position.copy(desired);

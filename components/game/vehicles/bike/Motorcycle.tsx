@@ -56,7 +56,16 @@ export default function Motorcycle({ worldRef }: { worldRef: RefObject<GameWorld
       return;
     }
     if (world.mode === "ride") updateBike(world, dt);
-    updateEngine(world.bikeSpeed, world.engineOn, dt);
+    // Player→bike distance (0 while riding) drives engine loudness: a
+    // parked running bike fades out as you walk away from it.
+    const engDist =
+      world.mode === "ride"
+        ? 0
+        : Math.hypot(
+            world.playerPos.x - world.bikePos.x,
+            world.playerPos.z - world.bikePos.z,
+          );
+    updateEngine(world.bikeSpeed, world.engineOn, dt, engDist);
 
     root.current.position.copy(world.bikePos);
     root.current.rotation.set(0, world.bikeYaw, 0);
