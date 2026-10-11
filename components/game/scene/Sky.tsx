@@ -4,9 +4,10 @@
 
 "use client";
 
-import { useMemo, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { getQuality, subscribeQuality } from "@/lib/game/quality";
 import {
   advanceTime,
   moonDirection,
@@ -145,6 +146,25 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
   const cloudRefs = useRef<(THREE.Sprite | null)[]>([]);
   const elapsedRef = useRef(0);
   const scratchTarget = useMemo(() => new THREE.Object3D(), []);
+
+  // Low quality: halve shadow-map resolution live (dispose forces three.js
+  // to reallocate at the new size — no remount, applies on next frames).
+  useEffect(() => {
+    const apply = () => {
+      const s = getQuality().level === "low" ? 512 : 1024;
+      for (const ref of [sunRef, moonRef]) {
+        const light = ref.current;
+        if (!light || light.shadow.mapSize.x === s) continue;
+        light.shadow.mapSize.set(s, s);
+        if (light.shadow.map) {
+          light.shadow.map.dispose();
+          light.shadow.map = null;
+        }
+      }
+    };
+    apply();
+    return subscribeQuality(apply);
+  }, []);
 
   const skyMat = useMemo(
     () =>

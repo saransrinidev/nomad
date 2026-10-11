@@ -877,6 +877,233 @@ export function railSurfaceY(x: number, z: number): number {
   return best ?? groundHeight(x, z);
 }
 
+// --- Walkable rail bridges (cross passage over water) ---
+//
+// Detection (single source of truth): wherever the deck flies over water
+// (same rule as the trestle piers), restricted to the rendered wall-to-wall
+// bounds. Both the walkable collision (bridgeWalks) and the visible
+// Bridges component derive from these runs, so visuals and collision can
+// never drift apart. A dev-console table logs every placement.
+
+export interface BridgeRun {
+  line: string;
+  /** Run center (game meters, exact placement anchor). */
+  x: number;
+  z: number;
+  yaw: number;
+  /** Length along track + deck datum (feet level) at center. */
+  len: number;
+  top: number;
+  /** Deck samples every ~8 m (for collision + visual subdivision). */
+  pts: { x: number; z: number; top: number }[];
+}
+
+let runCache: BridgeRun[] | null = null;
+
+/** All over-water runs: line id + exact center/yaw/length/deck-top. */
+export function bridgeRuns(): BridgeRun[] {
+  if (runCache) return runCache;
+  const out: BridgeRun[] = [];
+  for (const line of getLines()) {
+    const r = getLine(line.def.id);
+    const b = lineRenderBounds(line.def.id);
+    const deckAtLocal = (s: number): number => {
+      const sc = Math.min(r.length, Math.max(0, s));
+      const f = sc / r.deckDs;
+      const i = Math.min(r.deckY.length - 2, Math.max(0, Math.floor(f)));
+      const k = Math.min(1, Math.max(0, f - i));
+      return r.deckY[i] + (r.deckY[i + 1] - r.deckY[i]) * k;
+    };
+    let run: { x: number; z: number; top: number }[] = [];
+    const flush = () => {
+      if (run.length < 2) {
+        run = [];
+        return;
+      }
+      const a = run[0];
+      const c = run[run.length - 1];
+      let len = 0;
+      for (let i = 1; i < run.length; i++) {
+        len += Math.hypot(run[i].x - run[i - 1].x, run[i].z - run[i - 1].z);
+      }
+      let top = 0;
+      for (const p of run) top += p.top;
+      out.push({
+        line: line.def.id,
+        x: (a.x + c.x) / 2,
+        z: (a.z + c.z) / 2,
+        yaw: Math.atan2(c.x - a.x, c.z - a.z),
+        len,
+        top: top / run.length,
+        pts: run,
+      });
+      run = [];
+    };
+    for (let s = b.s0 - 24; s <= b.s1 + 24; s += 8) {
+      const sc = Math.min(r.length, Math.max(0, s));
+      const p = trackPointAtLength(r.path, r.cum, r.length, sc);
+      const top = deckAtLocal(sc);
+      if (top > groundHeight(p.x, p.z) + 0.4) {
+        run.push({ x: p.x, z: p.z, top });
+      } else if (run.length > 0) {
+        // One extra sample past the edge for a clean ramp joint.
+        run.push({ x: p.x, z: p.z, top });
+        flush();
+      }
+    }
+    if (run.length > 1) flush();
+  }
+  runCache = out;
+  if (typeof console !== "undefined" && out.length > 0) {
+    console.info(
+      "[bridges] detected rail-over-water runs (line | center | len | deckTop):",
+      out.map((r) => ({
+        line: r.line,
+        x: Math.round(r.x),
+        z: Math.round(r.z),
+        len: Math.round(r.len),
+        top: +r.top.toFixed(2),
+      })),
+    );
+  }
+  return out;
+}
+
+export interface BridgeWalk {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  /** Deck datum at a (feet ride the ballast, like on land). */
+  ta: number;
+  /** Deck datum at b. */
+  tb: number;
+  /** False where another line runs alongside (no handrails there). */
+  railed: boolean;
+}
+
+/** Half-width of the walkable ballast bed (visual bed is 4.5 m wide). */
+export const BRIDGE_HALF_W = 2.2;
+
+/** No handrails where another line runs this close (double-track pairs,
+ * quad crossings): decks stay walkable, rails resume once lines separate.
+ * 18 m covers the 12–16 m pair spacings with margin; isolated lines keep
+ * rails everywhere. */
+export const BRIDGE_RAIL_GAP = 18;
+
+/** Squared distance to the nearest track of any line except skipId. */
+function nearestOtherLineDistSq(x: number, z: number, skipId: string): number {
+  let best = Infinity;
+  for (const line of getLines()) {
+    if (line.def.id === skipId) continue;
+    const pts = line.path;
+    for (let i = 0; i < pts.length; i++) {
+      const dx = x - pts[i].x;
+      if (dx > 64 || dx < -64) continue;
+      const dz = z - pts[i].z;
+      if (dz > 64 || dz < -64) continue;
+      const d = dx * dx + dz * dz;
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}
+
+let walkCache: BridgeWalk[] | null = null;
+
+/** All walkable deck runs, one segment per ~8 m of over-water deck. */
+export function bridgeWalks(): BridgeWalk[] {
+  if (walkCache) return walkCache;
+  const out: BridgeWalk[] = [];
+  for (const run of bridgeRuns()) {
+    for (let i = 1; i < run.pts.length; i++) {
+      const a = run.pts[i - 1];
+      const c = run.pts[i];
+      const mx = (a.x + c.x) / 2;
+      const mz = (a.z + c.z) / 2;
+      const railed =
+        nearestOtherLineDistSq(mx, mz, run.line) >= BRIDGE_RAIL_GAP * BRIDGE_RAIL_GAP;
+      out.push({ ax: a.x, az: a.z, bx: c.x, bz: c.z, ta: a.top, tb: c.top, railed });
+    }
+  }
+  walkCache = out;
+  return out;
+}
+
+/** Deck top under a point when feet are near it (open sky above — no
+ * ceiling check needed), null otherwise. Lowest qualifying deck wins so
+ * overlapping spans never pop bodies upward. `below` extends the reach
+ * under the deck for mantle grabs (rising bodies only — callers gate). */
+export function bridgeTopAt(x: number, z: number, py: number, below = 0): number | null {
+  let best: number | null = null;
+  for (const w of bridgeWalks()) {
+    const dx = x - w.ax;
+    if (dx > 12 || dx < -12) continue;
+    const dz = z - w.az;
+    if (dz > 12 || dz < -12) continue;
+    const abx = w.bx - w.ax;
+    const abz = w.bz - w.az;
+    const lenSq = abx * abx + abz * abz;
+    let t = 0;
+    if (lenSq > 0) {
+      t = (dx * abx + dz * abz) / lenSq;
+      t = Math.min(1, Math.max(0, t));
+    }
+    const cx = w.ax + abx * t - x;
+    const cz = w.az + abz * t - z;
+    if (cx * cx + cz * cz > (BRIDGE_HALF_W + 0.3) * (BRIDGE_HALF_W + 0.3)) continue;
+    const top = w.ta + (w.tb - w.ta) * t;
+    if (py > top - 0.6 - below && (best === null || top < best)) best = top;
+  }
+  return best;
+}
+
+/** Side railing horns (mirror Bridges.tsx RAIL_X): bodies at deck height
+ * are clamped to the inner rail face instead of strolling off the edge.
+ * Single-sided clamp (stable resting point, no oscillation with train
+ * ejects). Skipped below the deck (free wading underneath) and above
+ * rail-top height (deliberate hops over the side stay possible). */
+const BRIDGE_RAIL_X = 2.35;
+const BRIDGE_RAIL_TOP = 1.0;
+
+export function collideBridgeRails(
+  x: number,
+  z: number,
+  radius: number,
+  py: number,
+): { x: number; z: number } {
+  let px = x;
+  let pz = z;
+  for (const w of bridgeWalks()) {
+    if (!w.railed) continue;
+    const dx = px - w.ax;
+    if (dx > 12 || dx < -12) continue;
+    const dz = pz - w.az;
+    if (dz > 12 || dz < -12) continue;
+    const abx = w.bx - w.ax;
+    const abz = w.bz - w.az;
+    const lenSq = abx * abx + abz * abz;
+    if (lenSq <= 0) continue;
+    const raw = (dx * abx + dz * abz) / lenSq;
+    if (raw < -0.08 || raw > 1.08) continue;
+    const t = Math.min(1, Math.max(0, raw));
+    const top = w.ta + (w.tb - w.ta) * t;
+    if (py <= top - 0.5 || py >= top + BRIDGE_RAIL_TOP) continue;
+    // Lateral offset in the segment frame (matches carLocal convention).
+    const yaw = Math.atan2(abx, abz);
+    const lx = Math.cos(yaw) * dx - Math.sin(yaw) * dz;
+    const inner = BRIDGE_RAIL_X - 0.075;
+    const alx = Math.abs(lx);
+    if (alx > inner && alx < inner + radius + 0.6) {
+      const s = lx >= 0 ? 1 : -1;
+      const nlx = s * inner;
+      px = w.ax + abx * t + Math.cos(yaw) * nlx;
+      pz = w.az + abz * t - Math.sin(yaw) * nlx;
+    }
+  }
+  return { x: px, z: pz };
+}
+
 /** Center pose of every car — engine first, coaches, engine last — given
  * the consist CENTER distance + direction of travel. The consist is rigid
  * in the line frame (index 0 is always the +s engine): reversals only flip
@@ -1920,7 +2147,8 @@ function nearestRailDistSq(x: number, z: number): number {
 }
 
 /** Spiral-search the nearest open ground at least `minClear` meters from
- * any rail (stations included — their tracks count too). Spawn pickers,
+ * any rail (stations included — their tracks count too) and on dry land
+ * (riverbeds read as water: `groundHeight >= 1.0`). Spawn pickers,
  * boot and respawn all route through this so riders always land on plain
  * district land, clear of platforms, rails and dwelling consists. */
 export function clearGroundSpot(
@@ -1930,7 +2158,9 @@ export function clearGroundSpot(
   maxR = 300,
 ): { x: number; z: number } {
   const minSq = minClear * minClear;
-  if (nearestRailDistSq(x, z) >= minSq) return { x, z };
+  const ok = (cx: number, cz: number) =>
+    nearestRailDistSq(cx, cz) >= minSq && groundHeight(cx, cz) >= 1.0;
+  if (ok(x, z)) return { x, z };
   let fallback = { x, z };
   let fallbackD = -1;
   const radii = [15, 30, 45, 60, 90, 120, 160, 200, 260];
@@ -1941,7 +2171,7 @@ export function clearGroundSpot(
       const cx = x + Math.cos(a) * r;
       const cz = z + Math.sin(a) * r;
       const d = nearestRailDistSq(cx, cz);
-      if (d >= minSq) return { x: cx, z: cz };
+      if (d >= minSq && groundHeight(cx, cz) >= 1.0) return { x: cx, z: cz };
       if (d > fallbackD) {
         fallbackD = d;
         fallback = { x: cx, z: cz };

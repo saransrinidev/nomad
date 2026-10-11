@@ -14,8 +14,9 @@ import {
   RUN_SPEED,
   WALK_SPEED,
 } from "./gameConstants";
-import { carryDelta, coachCapAt, coachFloorAt, collideBuildings, collideStation, collideTrain, platformTopAt, stairTopAt } from "./map/railway";
-import { groundHeight, WORLD_HALF } from "./map/terrain";
+import { bridgeTopAt, carryDelta, coachCapAt, coachFloorAt, collideBridgeRails, collideBuildings, collideStation, collideTrain, platformTopAt, stairTopAt } from "./map/railway";
+import { riverFlowAt } from "./map/rivers";
+import { groundHeight, WATER_SURFACE_Y, WORLD_HALF } from "./map/terrain";
 import type { GameWorld } from "./state";
 
 function damp(current: number, target: number, rate: number, dt: number) {
@@ -38,8 +39,8 @@ export function collideWorld(x: number, z: number): { x: number; z: number } {
 
 /**
  * Highest walkable surface under a point: terrain, station platform tops +
- * access stairs, coach floors (incl. doorway bridge plates). Elevated
- * surfaces only catch bodies above them.
+ * access stairs, coach floors (incl. doorway bridge plates), rail bridge
+ * decks over water. Elevated surfaces only catch bodies above them.
  */
 export function surfaceY(x: number, z: number, py: number): number {
   let gy = groundHeight(x, z);
@@ -49,6 +50,8 @@ export function surfaceY(x: number, z: number, py: number): number {
   if (st !== null) gy = Math.max(gy, st);
   const cf = coachFloorAt(x, z);
   if (cf !== null && py > cf - 0.6) gy = Math.max(gy, cf);
+  const br = bridgeTopAt(x, z, py);
+  if (br !== null) gy = Math.max(gy, br);
   return gy;
 }
 
@@ -71,8 +74,13 @@ function updateCrashFlight(world: GameWorld, step: number) {
   if (world.playerPos.y <= gy) {
     world.playerPos.y = gy;
     const slam = -world.crashVel.y;
-    if (slam > CRASH_BOUNCE_VY) {
-      world.crashVel.y = slam * CRASH_BOUNCE_KEEP;
+    // Water cushions the landing (splash down instead of slamming rock).
+    const effSlam =
+      groundHeight(world.playerPos.x, world.playerPos.z) < WATER_SURFACE_Y - 0.4
+        ? slam * 0.4
+        : slam;
+    if (effSlam > CRASH_BOUNCE_VY) {
+      world.crashVel.y = effSlam * CRASH_BOUNCE_KEEP;
       world.crashVel.x *= 0.5;
       world.crashVel.z *= 0.5;
       world.crashSpin *= 0.5;
@@ -83,7 +91,7 @@ function updateCrashFlight(world: GameWorld, step: number) {
       world.playerVelY = 0;
       world.playerSpeed = 0;
       world.playerMoving = false;
-      world.stun = Math.min(CRASH_STUN_BASE + slam * CRASH_STUN_RATE, CRASH_STUN_MAX);
+      world.stun = Math.min(CRASH_STUN_BASE + effSlam * CRASH_STUN_RATE, CRASH_STUN_MAX);
     }
   }
 }
@@ -140,8 +148,13 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   const carry = carryDelta(world.playerPos.x, world.playerPos.z, world.playerPos.y);
   world.playerPos.x += carry.dx;
   world.playerPos.z += carry.dz;
-
-  // Shoreline: the island ends at the map edge.
+  // River drift: feet at/below the surface get pushed downstream (still
+  // water at the banks, full current mid-channel — see riverFlowAt).
+  if (world.playerPos.y < WATER_SURFACE_Y + 0.2) {
+    const flow = riverFlowAt(world.playerPos.x, world.playerPos.z);
+    world.playerPos.x += flow.dx * step;
+    world.playerPos.z += flow.dz * step;
+  }
   const B = WORLD_HALF;
   world.playerPos.x = Math.min(B, Math.max(-B, world.playerPos.x));
   world.playerPos.z = Math.min(B, Math.max(-B, world.playerPos.z));
@@ -151,13 +164,40 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   // players above them.
   const gy = surfaceY(world.playerPos.x, world.playerPos.z, world.playerPos.y);
 
+  // Swimming: bed well under the surface (elevated floors/decks raise gy
+  // out of this automatically). Buoyancy floats the body, strokes run at
+  // 40% speed — water is hard — and there is no sprint or jump in it.
+  const swimming = gy < WATER_SURFACE_Y - 0.4;
+  world.playerSwimming = swimming;
+  if (swimming) {
+    world.playerSpeed = damp(world.playerSpeed, WALK_SPEED * 0.4, PLAYER_ACCEL, step);
+    world.playerMoving = world.playerSpeed > 0.25;
+    world.playerRunning = false;
+  }
+
   // Jump (Space doubles as the bike brake, which is unused on foot).
-  if (keys.brake && world.playerVelY === 0 && !stunned) world.playerVelY = 7.5;
+  if (keys.brake && world.playerVelY === 0 && !stunned && !swimming) world.playerVelY = 7.5;
 
   // Designed-terrain ground (kept for future ramps/jumps).
   world.playerVelY -= GRAVITY * step;
   world.playerPos.y += world.playerVelY * step;
-  if (world.playerPos.y <= gy) {
+  // Bridge mantle: rising toward a deck from below grabs it (vault up to
+  // 1.6 m under the top). Anything lower genuinely can't reach — walk out
+  // via the banks instead of teleporting up impossible heights.
+  if (world.playerVelY > 0) {
+    const grab = bridgeTopAt(world.playerPos.x, world.playerPos.z, world.playerPos.y, 1.0);
+    if (grab !== null && world.playerPos.y <= grab - 0.6) {
+      world.playerPos.y = grab;
+      world.playerVelY = 0;
+    }
+  }
+  if (swimming) {
+    // Float: ease feet to just under the surface, head stays dry. No
+    // gravity accumulation down here (and no ground snap to the bed).
+    const floatY = WATER_SURFACE_Y - 1.15;
+    world.playerPos.y += (floatY - world.playerPos.y) * Math.min(1, 8 * step);
+    world.playerVelY = 0;
+  } else if (world.playerPos.y <= gy) {
     world.playerPos.y = gy;
     world.playerVelY = 0;
   }
@@ -184,6 +224,11 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   const bc = collideBuildings(world.playerPos.x, world.playerPos.z, 0.5, world.playerPos.y);
   world.playerPos.x = bc.x;
   world.playerPos.z = bc.z;
+  // Bridge side railings corral bodies at deck height (free below for
+  // wading under, free above for deliberate hops over the side).
+  const br = collideBridgeRails(world.playerPos.x, world.playerPos.z, 0.5, world.playerPos.y);
+  world.playerPos.x = br.x;
+  world.playerPos.z = br.z;
 
   // Walk-cycle phase for limb animation.
   if (world.playerMoving) {

@@ -4,6 +4,7 @@
 
 import type * as THREE from "three";
 import { isInsideTN, setTNWorldSize } from "./tamilnadu";
+import { carveRivers } from "./rivers";
 
 export const WORLD_SIZE = 16000; // 16x16 km Tamil Nadu plain
 export const WORLD_HALF = WORLD_SIZE / 2;
@@ -34,6 +35,8 @@ export function chunkOrigin(cx: number, cz: number): { x: number; z: number } {
 export const TN_LAND_H = 2.0;
 export const TN_SEA_H = -5.0;
 export const TN_BEACH_H = 0.4;
+/** Open water surface (ocean plane + river surfaces read at this level). */
+export const WATER_SURFACE_Y = 0.3;
 
 /** Paint layers: grass (white = untinted real texture), alluvial soil, sand, rock, asphalt. */
 export type PaintLayer = 0 | 1 | 2 | 3 | 4;
@@ -89,6 +92,9 @@ export function createTerrain(): TerrainData {
       }
     }
   }
+  // Third pass: carve river channels (bed below the ocean plane so water
+  // shows through; walkable banks; station grounds stay dry).
+  carveRivers(heights, paint, inside, TERRAIN_RES, CELL, WORLD_HALF, 0, TERRAIN_RES);
   return { heights, paint };
 }
 
@@ -140,7 +146,7 @@ export function buildTerrainAsync(onProgress?: (p: number) => void): Promise<Ter
           paint[idx] = inn ? 0 : 2;
         }
       }
-      terrainProgress = (0.5 * (s + 1)) / SLICES;
+      terrainProgress = (0.45 * (s + 1)) / SLICES;
       onProgress?.(terrainProgress);
       await yieldUI();
     }
@@ -172,7 +178,17 @@ export function buildTerrainAsync(onProgress?: (p: number) => void): Promise<Ter
           }
         }
       }
-      terrainProgress = 0.5 + (0.5 * (s + 1)) / SLICES;
+      terrainProgress = 0.45 + (0.35 * (s + 1)) / SLICES;
+      onProgress?.(terrainProgress);
+      await yieldUI();
+    }
+    // Third pass: carve river channels (sliced like the rest so the
+    // loader stays live — same math as the synchronous build).
+    for (let s = 0; s < SLICES; s++) {
+      const z0 = s * rowsPer;
+      const z1 = Math.min(TERRAIN_RES, z0 + rowsPer);
+      carveRivers(heights, paint, inside, TERRAIN_RES, CELL, WORLD_HALF, z0, z1);
+      terrainProgress = 0.8 + (0.2 * (s + 1)) / SLICES;
       onProgress?.(terrainProgress);
       await yieldUI();
     }

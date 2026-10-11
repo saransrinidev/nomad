@@ -25,6 +25,8 @@ import Sky from "./scene/Sky";
 import Terrain from "./scene/Terrain";
 import Ocean from "./scene/Ocean";
 import Railway from "./scene/Railway";
+import Bridges from "./scene/Bridges";
+import WaterOverlay from "./scene/WaterOverlay";
 import Train from "./vehicles/train/Train";
 import TrainPrompt from "./prompts/TrainPrompt";
 import { CanvasErrorBoundary, WebGLHelpScreen } from "./system/WebGLSupport";
@@ -573,11 +575,13 @@ export default function Game() {
             <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} engineOn={engineUi} />
             <SkidMarks worldRef={worldRef} />
             <Railway worldRef={worldRef} />
+            <Bridges />
             <Train worldRef={worldRef} />
             <TrainPrompt worldRef={worldRef} />
           </>
           <Player worldRef={worldRef} />
           <ThirdPersonCamera worldRef={worldRef} onLockChange={handleLockChange} />
+          <WaterOverlay />
           <GameRig
             worldRef={worldRef}
             onNearBike={handleNearBike}
@@ -589,6 +593,13 @@ export default function Game() {
           </Canvas>
         </CanvasErrorBoundary>
       ) : null}
+
+      {/* Underwater tint (driven per-frame by WaterOverlay in the Canvas). */}
+      <div
+        id="water-overlay"
+        className="pointer-events-none absolute inset-0 z-[5] opacity-0"
+        style={{ background: "#04365e" }}
+      />
 
       <GameHUD
         mode={mode}

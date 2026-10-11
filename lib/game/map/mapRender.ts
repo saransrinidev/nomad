@@ -41,6 +41,8 @@ export interface MapDrawOptions {
   labelFont?: string;
   /** Railway line + stations + live train marker. */
   railway?: RailwayMapData;
+  /** River centerlines in game meters (drawn under rails). */
+  rivers?: { x: number; z: number }[][];
   /** Thanjavur highlight rings in game meters (drawn filled + colored). */
   highlightRings?: { x: number; z: number }[][];
   /** Thanjavur label anchor in game meters. */
@@ -226,6 +228,25 @@ export function renderMap(
       ctx.moveTo(0, bz);
       ctx.lineTo(size, bz);
       ctx.stroke();
+    }
+  }
+
+  // Rivers: thin water polylines under rails + labels.
+  if (opts.rivers) {
+    ctx.strokeStyle = "#3d9ad6";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const river of opts.rivers) {
+      if (river.length > 1) {
+        ctx.beginPath();
+        for (let i = 0; i < river.length; i++) {
+          const [mx, mz] = toMap(river[i].x, river[i].z);
+          if (i === 0) ctx.moveTo(mx, mz);
+          else ctx.lineTo(mx, mz);
+        }
+        ctx.stroke();
+      }
     }
   }
 

@@ -111,6 +111,78 @@ function BoardGlow({ worldRef }: { worldRef?: RefObject<GameWorld> }) {
   return null;
 }
 
+// Two roaming warm pools replace the old per-shed static lights (14 point
+// lights → 2): they damp-follow the two nearest shed centers so the night
+// look stays where the player actually is. Light COUNT stays constant, so
+// shaders never recompile; emissive tube battens keep distant sheds
+// glowing for free. Intensity follows nightfall (no daytime wash).
+function StationGlow({ worldRef }: { worldRef?: RefObject<GameWorld> }) {
+  const glowA = useRef<THREE.PointLight>(null!);
+  const glowB = useRef<THREE.PointLight>(null!);
+  const anchors = useMemo(() => {
+    const at = (x: number, z: number) => ({ x, z, y: groundHeight(x, z) + 5.5 });
+    const v = getLine("chennai").stations[2];
+    const t = getLine("chennai").stations[8];
+    const e = getLine("western").stations[0];
+    const er = getLine("western").stations[5];
+    const m = getLine("southern").stations[4];
+    const vr = getLine("southern").stations[5];
+    const ti = getLine("southern").stations[6];
+    return [
+      at(v.x + 16.5, v.z), // Villupuram
+      at(t.x, t.z - 8), // Trichy
+      at(e.x, e.z), // Chennai
+      at(er.x, er.z - 7), // Erode
+      at(m.x + 9, m.z), // Madurai
+      at(vr.x + 9, vr.z), // Virudhunagar
+      at(ti.x + 9.5, ti.z), // Tirunelveli
+    ];
+  }, []);
+  const tmp = useMemo(() => new THREE.Vector3(), []);
+  useFrame((_, rawDt) => {
+    const dt = Math.min(rawDt, 0.05);
+    const world = worldRef?.current;
+    if (!world || world.paused) return;
+    const fx = world.mode === "ride" ? world.bikePos.x : world.playerPos.x;
+    const fz = world.mode === "ride" ? world.bikePos.z : world.playerPos.z;
+    let b1 = 0;
+    let b2 = 1;
+    let d1 = Infinity;
+    let d2 = Infinity;
+    for (let i = 0; i < anchors.length; i++) {
+      const dx = anchors[i].x - fx;
+      const dz = anchors[i].z - fz;
+      const d = dx * dx + dz * dz;
+      if (d < d1) {
+        d2 = d1;
+        b2 = b1;
+        d1 = d;
+        b1 = i;
+      } else if (d < d2) {
+        d2 = d;
+        b2 = i;
+      }
+    }
+    const v = 400 * nightFactor(world.time);
+    const k = 1 - Math.exp(-3 * dt);
+    const refs = [glowA.current, glowB.current];
+    const picks = [anchors[b1], anchors[b2]];
+    for (let i = 0; i < 2; i++) {
+      const light = refs[i];
+      if (!light) continue;
+      tmp.set(picks[i].x, picks[i].y, picks[i].z);
+      light.position.lerp(tmp, k);
+      light.intensity = v;
+    }
+  });
+  return (
+    <group>
+      <pointLight ref={glowA} color="#ffe2b0" intensity={0} distance={55} decay={2} />
+      <pointLight ref={glowB} color="#ffe2b0" intensity={0} distance={55} decay={2} />
+    </group>
+  );
+}
+
 interface Piece {
   x: number;
   y: number;
@@ -163,7 +235,7 @@ function useTrackPieces() {
   }, []);
 }
 
-function useFillInstances(
+export function useFillInstances(
   ref: RefObject<THREE.InstancedMesh | null>,
   items: { x: number; y: number; z: number; yaw: number; len?: number; dx?: number; dz?: number }[],
   baseLen: number,
@@ -631,9 +703,7 @@ function VillupuramShed() {
         <boxGeometry args={[0.5, 0.12, 1.4]} />
         <meshBasicMaterial color="#fff3d0" toneMapped={false} />
       </instancedMesh>
-      {/* Two warm pools of real light over the row (night-readable). */}
-      <pointLight position={[-2.5, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
-      <pointLight position={[-2.5, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Night light comes from the roaming StationGlow pools. */}
     </group>
   );
 }
@@ -896,9 +966,7 @@ function ErodeShed() {
           </mesh>
         )),
       )}
-      {/* Two warm pools of real light over the platforms (night-readable). */}
-      <pointLight position={[-7, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
-      <pointLight position={[-7, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Night light comes from the roaming StationGlow pools. */}
       {/* Single name board on the south fascia, readable both ways. */}
       {sign && (
         <>
@@ -980,9 +1048,7 @@ function MaduraiShed() {
           </mesh>
         )),
       )}
-      {/* Two warm pools of real light over the platforms (night-readable). */}
-      <pointLight position={[4, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
-      <pointLight position={[14, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Night light comes from the roaming StationGlow pools. */}
       {/* Single name board on the east fascia, readable both ways. */}
       {sign && (
         <>
@@ -1061,9 +1127,7 @@ function VirudhunagarShed() {
           </mesh>
         )),
       )}
-      {/* Two warm pools of real light over the platforms (night-readable). */}
-      <pointLight position={[4, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
-      <pointLight position={[14, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Night light comes from the roaming StationGlow pools. */}
       {/* Single name board on the east fascia, readable both ways. */}
       {sign && (
         <>
@@ -1145,9 +1209,7 @@ function TirunelveliShed() {
           </mesh>
         )),
       )}
-      {/* Two warm pools of real light over the platforms (night-readable). */}
-      <pointLight position={[4, 5.5, -30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
-      <pointLight position={[14, 5.5, 30]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Night light comes from the roaming StationGlow pools. */}
       {/* Single name board on the east fascia, readable both ways. */}
       {sign && (
         <>
@@ -1312,9 +1374,7 @@ function TrichyShed() {
         <boxGeometry args={[1.4, 0.12, 0.5]} />
         <meshBasicMaterial color="#fff3d0" toneMapped={false} />
       </instancedMesh>
-      {/* Two warm pools of real light over the platforms (night-readable). */}
-      <pointLight position={[-30, 5.5, 1]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
-      <pointLight position={[30, 5.5, 1]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Night light comes from the roaming StationGlow pools. */}
     </group>
   );
 }
@@ -1377,9 +1437,7 @@ function ChennaiTerminus({ worldRef }: { worldRef?: RefObject<GameWorld> }) {
           </mesh>
         )),
       )}
-      {/* Two warm pools of real light between the tracks (night-readable). */}
-      <pointLight position={[-5.5, 5.5, 0]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
-      <pointLight position={[5.5, 5.5, 0]} color="#ffe2b0" intensity={400} distance={55} decay={2} />
+      {/* Night light comes from the roaming StationGlow pools. */}
         {/* Grand name board on the east fascia, readable both ways */}
         {sign && (
           <>
@@ -1488,6 +1546,8 @@ export default function Railway({ worldRef }: { worldRef?: RefObject<GameWorld> 
     <group>
       {/* Night-driven sign glow (shared board materials, no per-mesh cost). */}
       <BoardGlow worldRef={worldRef} />
+      {/* Roaming station light pools (2 lights cover all 7 sheds). */}
+      <StationGlow worldRef={worldRef} />
       {/* Ballast beds (unit box scaled per piece) */}
       <instancedMesh ref={ballastRef} args={[undefined, undefined, pieces.length]} frustumCulled={false}>
         <boxGeometry args={[BALLAST_W, 0.18, 1]} />

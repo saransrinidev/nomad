@@ -24,7 +24,7 @@ import {
   CRASH_SPIN_RATE,
 } from "./gameConstants";
 import { collideWorld } from "./playerController";
-import { collideBuildings, collideStation, collideTrain } from "./map/railway";
+import { bridgeTopAt, collideBridgeRails, collideBuildings, collideStation, collideTrain } from "./map/railway";
 import { groundHeight, WORLD_HALF } from "./map/terrain";
 import type { GameWorld } from "./state";
 
@@ -163,7 +163,18 @@ export function updateBike(world: GameWorld, dt: number) {
     world.bikeSpeed *= 0.4;
     world.bikeVel.multiplyScalar(0.4);
   }
+  // Grounds the bike on terrain — or on a rail bridge deck over water
+  // (same mount rule as walkers: only when already near deck height, so
+  // riding underneath never snaps up). NOTE: query with the pre-snap
+  // height — checking after grounding would always fail mid-river.
+  const deck = bridgeTopAt(world.bikePos.x, world.bikePos.z, world.bikePos.y);
   world.bikePos.y = groundHeight(world.bikePos.x, world.bikePos.z);
+  if (deck !== null) world.bikePos.y = Math.max(world.bikePos.y, deck);
+  // Bridge railings bump the bike back onto the deck (no crash — grinding
+  // rails just steers you, like station side walls).
+  const br = collideBridgeRails(world.bikePos.x, world.bikePos.z, 1.1, world.bikePos.y);
+  world.bikePos.x = br.x;
+  world.bikePos.z = br.z;
 
   const fixed = collideWorld(world.bikePos.x, world.bikePos.z);
   const tf = collideTrain(fixed.x, fixed.z, 1.1, world.bikePos.y);

@@ -13,6 +13,7 @@ import {
   getThanjavurRings,
 } from "@/lib/game/map/districts";
 import { getRailwayMapData } from "@/lib/game/map/railway";
+import { riverPolylines } from "@/lib/game/map/rivers";
 import type { GameWorld } from "@/lib/game/state";
 
 const SIZE = 200;
@@ -83,6 +84,7 @@ export default function Minimap({
           districtLabels: div.labels,
           labelFont: "600 9px sans-serif",
           railway: getRailwayMapData(),
+          rivers: riverPolylines(),
           highlightRings: getThanjavurRings(),
           highlightLabel: getThanjavurLabel(),
         },

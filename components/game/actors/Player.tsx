@@ -36,7 +36,8 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
     if (world.paused) return;
 
     // Torso stays upright; only the arms reach out (sprint adds a slight tuck).
-    const leanTarget = world.mode === "ride" ? 0 : world.playerRunning ? 0.1 : 0;
+    const leanTarget =
+      world.mode === "ride" ? 0 : world.playerSwimming ? 0.35 : world.playerRunning ? 0.1 : 0;
     lean.current.rotation.x +=
       (leanTarget - lean.current.rotation.x) * Math.min(1, dt * 8);
 
@@ -106,9 +107,9 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
       root.current.position.copy(world.playerPos);
       root.current.rotation.set(0, world.playerYaw, 0);
 
-      // Footstep on each half walk-cycle.
+      // Footstep on each half walk-cycle (silent while swimming).
       const stepIndex = Math.floor(world.walkPhase / Math.PI);
-      if (world.playerMoving && stepIndex !== lastStep.current) {
+      if (world.playerMoving && !world.playerSwimming && stepIndex !== lastStep.current) {
         lastStep.current = stepIndex;
         playFootstep(world.playerRunning);
       } else if (!world.playerMoving) {

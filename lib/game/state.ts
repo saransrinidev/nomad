@@ -55,6 +55,8 @@ export interface GameWorld {
   playerSpeed: number; // horizontal speed, for animation + HUD
   playerMoving: boolean;
   playerRunning: boolean;
+  /** Chest-deep or more in water: floating, slow strokes, river drift. */
+  playerSwimming: boolean;
   walkPhase: number;
   /** Ballistic flight after a bike crash (see bikeController ejectRider). */
   crashFlying: boolean;
@@ -126,6 +128,7 @@ export function createInitialWorld(): GameWorld {
     playerSpeed: 0,
     playerMoving: false,
     playerRunning: false,
+    playerSwimming: false,
     walkPhase: 0,
     crashFlying: false,
     crashVel: new THREE.Vector3(),
