@@ -18,6 +18,10 @@ const SHIRT = "#161616";
 const DENIM = "#2f4d7d";
 const SHOE = "#1f2937";
 const HAIR = "#14100d";
+// The movement collider is located at the character's feet, while the
+// primitive legs/shoes extend a little below the visual root. Keep the mesh
+// above the terrain so sand cannot depth-occlude the lower body.
+const PLAYER_VISUAL_LIFT = 0.24;
 
 export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> }) {
   const root = useRef<THREE.Group>(null!);
@@ -117,22 +121,44 @@ export default function Player({ worldRef }: { worldRef: RefObject<GameWorld> })
       }
 
       // Procedural walk cycle.
-      const swing = world.playerMoving
-        ? Math.sin(world.walkPhase) * (world.playerRunning ? 0.75 : 0.55)
-        : 0;
-      leftLeg.current.rotation.x = swing;
-      rightLeg.current.rotation.x = -swing;
-      leftLeg.current.rotation.z = 0;
-      rightLeg.current.rotation.z = 0;
-      leftArm.current.rotation.x = -swing * 0.85;
-      rightArm.current.rotation.x = swing * 0.85;
-      // Slight natural elbow bend while walking.
-      leftElbow.current.rotation.x = -0.25;
-      rightElbow.current.rotation.x = -0.25;
+      if (world.playerSwimming) {
+        // Front crawl: alternating arm pulls with a softer opposite leg kick.
+        // The character root is already buoyed by the controller, so the
+        // upper body stays above the surface while the limbs sell the motion.
+        const stroke = Math.sin(world.walkPhase);
+        const counterStroke = Math.sin(world.walkPhase + Math.PI);
+        const kick = Math.sin(world.walkPhase * 1.7) * 0.32;
+        leftLeg.current.rotation.x = kick;
+        rightLeg.current.rotation.x = -kick;
+        leftLeg.current.rotation.z = 0.05;
+        rightLeg.current.rotation.z = -0.05;
+        leftArm.current.rotation.x = -0.95 + stroke * 0.7;
+        rightArm.current.rotation.x = -0.95 + counterStroke * 0.7;
+        leftArm.current.rotation.z = -0.22;
+        rightArm.current.rotation.z = 0.22;
+        leftElbow.current.rotation.x = -0.65 - stroke * 0.2;
+        rightElbow.current.rotation.x = -0.65 - counterStroke * 0.2;
+      } else {
+        const swing = world.playerMoving
+          ? Math.sin(world.walkPhase) * (world.playerRunning ? 0.75 : 0.55)
+          : 0;
+        leftLeg.current.rotation.x = swing;
+        rightLeg.current.rotation.x = -swing;
+        leftLeg.current.rotation.z = 0;
+        rightLeg.current.rotation.z = 0;
+        leftArm.current.rotation.x = -swing * 0.85;
+        rightArm.current.rotation.x = swing * 0.85;
+        leftArm.current.rotation.z = 0;
+        rightArm.current.rotation.z = 0;
+        // Slight natural elbow bend while walking.
+        leftElbow.current.rotation.x = -0.25;
+        rightElbow.current.rotation.x = -0.25;
+      }
       // Idle breathing.
       const t = performance.now() / 1000;
       root.current.position.y =
-        world.playerPos.y + (world.playerMoving ? 0 : Math.sin(t * 2) * 0.015);
+        world.playerPos.y + PLAYER_VISUAL_LIFT +
+        (world.playerMoving ? 0 : Math.sin(t * 2) * 0.015);
     } else {
       // Seated riding pose: hips on the saddle (offset behind bike center),
       // thighs forward with feet at the pegs, hands to the bars. Torso stays

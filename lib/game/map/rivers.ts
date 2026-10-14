@@ -74,7 +74,9 @@ export const RIVERS: RiverDef[] = [
 export const RIVER_BED_H = -3.5;
 /** Mid-channel current (m/s) — slowed near the banks. Swimming (≈1.8 m/s)
  * barely beats it upstream: crossing is work, drifting is free. */
-export const RIVER_FLOW_SPEED = 1.2;
+// Strong enough to visibly carry a floating bike downstream while still
+// allowing the rider to fight the current with throttle.
+export const RIVER_FLOW_SPEED = 3.2;
 /** Bank run-out each side of the water edge (walkable slope, no traps). */
 const BANK_W = 25;
 /** Alluvial tint ring past the sand banks. */

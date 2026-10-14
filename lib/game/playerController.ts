@@ -38,12 +38,28 @@ export function collideWorld(x: number, z: number): { x: number; z: number } {
 }
 
 /**
+ * Use a small footprint instead of a single-point terrain query. This keeps
+ * the character's feet above steep shoreline cells and sand banks where a
+ * center-only sample can be below the visible terrain at the edge.
+ */
+function terrainFootY(x: number, z: number): number {
+  const r = 0.38;
+  return Math.max(
+    groundHeight(x, z),
+    groundHeight(x + r, z),
+    groundHeight(x - r, z),
+    groundHeight(x, z + r),
+    groundHeight(x, z - r),
+  );
+}
+
+/**
  * Highest walkable surface under a point: terrain, station platform tops +
  * access stairs, coach floors (incl. doorway bridge plates), rail bridge
  * decks over water. Elevated surfaces only catch bodies above them.
  */
 export function surfaceY(x: number, z: number, py: number): number {
-  let gy = groundHeight(x, z);
+  let gy = terrainFootY(x, z);
   const pf = platformTopAt(x, z, py);
   if (pf !== null) gy = Math.max(gy, pf);
   const st = stairTopAt(x, z, py);
@@ -229,6 +245,17 @@ export function updateOnFoot(world: GameWorld, dt: number) {
   const br = collideBridgeRails(world.playerPos.x, world.playerPos.z, 0.5, world.playerPos.y);
   world.playerPos.x = br.x;
   world.playerPos.z = br.z;
+
+  // Collision helpers can push the player onto a different terrain cell.
+  // Re-sample after those corrections so the final position cannot remain
+  // inside a raised sand bank or shoreline slope.
+  const finalSurface = surfaceY(world.playerPos.x, world.playerPos.z, world.playerPos.y);
+  const leftWater = world.playerSwimming && finalSurface >= WATER_SURFACE_Y - 0.4;
+  if (leftWater) world.playerSwimming = false;
+  if ((!world.playerSwimming || leftWater) && world.playerPos.y < finalSurface) {
+    world.playerPos.y = finalSurface;
+    world.playerVelY = 0;
+  }
 
   // Walk-cycle phase for limb animation.
   if (world.playerMoving) {

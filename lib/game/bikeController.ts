@@ -26,6 +26,8 @@ import {
 import { collideWorld } from "./playerController";
 import { bridgeTopAt, collideBridgeRails, collideBuildings, collideStation, collideTrain } from "./map/railway";
 import { groundHeight, WORLD_HALF } from "./map/terrain";
+import { riverFlowAt } from "./map/rivers";
+import { WATER_SURFACE_Y } from "./map/terrain";
 import type { GameWorld } from "./state";
 
 function damp(current: number, target: number, rate: number, dt: number) {
@@ -86,6 +88,9 @@ function ejectRider(world: GameWorld, impactSpeed: number) {
 export function updateBike(world: GameWorld, dt: number) {
   const { keys } = world;
   const step = Math.min(dt, 1 / 20);
+  const bedY = groundHeight(world.bikePos.x, world.bikePos.z);
+  const inWater = bedY < WATER_SURFACE_Y - 0.25;
+  const flow = inWater ? riverFlowAt(world.bikePos.x, world.bikePos.z) : { dx: 0, dz: 0 };
   const throttle = keys.forward;
   const reverse = keys.back;
 
@@ -123,6 +128,17 @@ export function updateBike(world: GameWorld, dt: number) {
 
   world.bikeSpeed = clamp(world.bikeSpeed, BIKE_MAX_REVERSE, BIKE_MAX_SPEED);
 
+  if (inWater) {
+    // Water resistance rises with speed, while the current pushes the bike
+    // independently of throttle. This keeps the bike controllable but makes
+    // crossing a fast stream feel heavy and dangerous.
+    const waterDrag = Math.min(0.92, (0.9 + Math.abs(world.bikeSpeed) * 0.055) * step);
+    world.bikeSpeed *= 1 - waterDrag;
+    world.bikeVel.x += flow.dx * step;
+    world.bikeVel.z += flow.dz * step;
+    world.bikeSteer *= Math.max(0, 1 - 2.5 * step);
+  }
+
   // Steering with smoothing; full authority at low speed, damped at
   // high speed so 150 km/h stays stable but still turnable.
   const steerInput = (keys.left ? 1 : 0) + (keys.right ? -1 : 0);
@@ -149,7 +165,7 @@ export function updateBike(world: GameWorld, dt: number) {
   // Velocity follows heading with grip (snappy) or slides (drift).
   const fx = Math.sin(world.bikeYaw);
   const fz = Math.cos(world.bikeYaw);
-  const grip = drifting ? 2.2 : 10;
+  const grip = inWater ? 1.8 : drifting ? 2.2 : 10;
   const k = 1 - Math.exp(-grip * step);
   world.bikeVel.x += (fx * world.bikeSpeed - world.bikeVel.x) * k;
   world.bikeVel.z += (fz * world.bikeSpeed - world.bikeVel.z) * k;
@@ -163,12 +179,14 @@ export function updateBike(world: GameWorld, dt: number) {
     world.bikeSpeed *= 0.4;
     world.bikeVel.multiplyScalar(0.4);
   }
-  // Grounds the bike on terrain — or on a rail bridge deck over water
+  // Float the bike in water. Otherwise ground it on terrain — or on a rail bridge deck over water
   // (same mount rule as walkers: only when already near deck height, so
   // riding underneath never snaps up). NOTE: query with the pre-snap
   // height — checking after grounding would always fail mid-river.
   const deck = bridgeTopAt(world.bikePos.x, world.bikePos.z, world.bikePos.y);
-  world.bikePos.y = groundHeight(world.bikePos.x, world.bikePos.z);
+  world.bikePos.y = inWater
+    ? WATER_SURFACE_Y + 0.38
+    : groundHeight(world.bikePos.x, world.bikePos.z);
   if (deck !== null) world.bikePos.y = Math.max(world.bikePos.y, deck);
   // Bridge railings bump the bike back onto the deck (no crash — grinding
   // rails just steers you, like station side walls).

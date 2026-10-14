@@ -28,6 +28,7 @@ import Ocean from "./scene/Ocean";
 import Railway from "./scene/Railway";
 import Bridges from "./scene/Bridges";
 import WaterOverlay from "./scene/WaterOverlay";
+import ThanjavurCity from "./scene/ThanjavurCity";
 import Train from "./vehicles/train/Train";
 import TrainPrompt from "./prompts/TrainPrompt";
 import { CanvasErrorBoundary, WebGLHelpScreen } from "./system/WebGLSupport";
@@ -589,6 +590,7 @@ export default function Game() {
             <Terrain />
             <Ocean />
             <Sky worldRef={worldRef} />
+            <ThanjavurCity />
             <Motorcycle worldRef={worldRef} />
             <BikePrompt worldRef={worldRef} visible={nearBike && mode === "walk"} engineOn={engineUi} />
             <SkidMarks worldRef={worldRef} />
