@@ -49,6 +49,7 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
   const trunkRef = useRef<THREE.InstancedMesh>(null!);
   const foliageRef = useRef<THREE.InstancedMesh>(null!);
   const rockRef = useRef<THREE.InstancedMesh>(null!);
+  const lastFocus = useRef({ x: Number.NaN, z: Number.NaN });
 
   // Scratch object reused every frame (never recreated, never re-rendered).
   const scratch = useMemo(() => ({ dummy: new THREE.Object3D() }), []);
@@ -74,6 +75,16 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
     if (world.paused) return;
     const { dummy } = scratch;
     const focus = getFocusPoint(world);
+
+    // The scatter wraps around the player, but it only changes when the
+    // player has moved far enough for an item to cross the wrap seam. Avoid
+    // rewriting 300 instance matrices and resampling the heightfield every
+    // render frame while the camera is moving in place.
+    const dx = focus.x - lastFocus.current.x;
+    const dz = focus.z - lastFocus.current.z;
+    if (Number.isFinite(lastFocus.current.x) && dx * dx + dz * dz < 16) return;
+    lastFocus.current.x = focus.x;
+    lastFocus.current.z = focus.z;
 
     // Toroidally wrap scatter around the player for endless variety.
     // Trees/rocks sit on the designed terrain height.
@@ -110,7 +121,6 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
       <instancedMesh
         ref={trunkRef}
         args={[trunkGeo, undefined, trees.length]}
-        castShadow
         frustumCulled={false}
       >
         <meshStandardMaterial color="#8f6238" roughness={1} flatShading />
@@ -118,7 +128,6 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
       <instancedMesh
         ref={foliageRef}
         args={[foliageGeo, undefined, trees.length]}
-        castShadow
         frustumCulled={false}
       >
         <meshStandardMaterial color="#2fa84f" roughness={1} flatShading />
@@ -126,7 +135,6 @@ export default function World({ worldRef }: { worldRef: RefObject<GameWorld> }) 
       <instancedMesh
         ref={rockRef}
         args={[rockGeo, undefined, rocks.length]}
-        castShadow
         receiveShadow
         frustumCulled={false}
       >
