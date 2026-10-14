@@ -17,7 +17,19 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { qualityViewRadius } from "@/lib/game/quality";
-import type { StreamItem } from "./instanceStream";
+
+// Keep this type local to the chunked renderer. The previous type-only import
+// made production builds depend on the legacy streaming helper being present
+// with exactly the same filename casing on case-sensitive hosts.
+export interface StreamItem {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  len?: number;
+  dx?: number;
+  dz?: number;
+}
 
 const DEFAULT_CHUNK = 500;
 // Re-evaluate chunk visibility only after the camera meaningfully moves
