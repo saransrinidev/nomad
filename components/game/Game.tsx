@@ -307,7 +307,7 @@ export default function Game() {
       // Handled in ThirdPersonCamera (it owns the canvas element).
       // Dispatched synchronously inside this user gesture (M / ESC / click)
       // so requestPointerLock still has transient activation.
-      window.dispatchEvent(new Event("nomad:relock"));
+      window.dispatchEvent(new Event("milewalker:relock"));
     }
   }, []);
 
@@ -353,7 +353,7 @@ export default function Game() {
     pausedRef.current = false;
     if (wasLockedRef.current) {
       wasLockedRef.current = false;
-      window.dispatchEvent(new Event("nomad:relock"));
+      window.dispatchEvent(new Event("milewalker:relock"));
     }
   }, []);
 

@@ -34,7 +34,7 @@ export function WebGLHelpScreen({ onRetry }: { onRetry: () => void }) {
         <h2 className="text-lg font-black tracking-wide">3D could not start</h2>
         <p className="mt-2 text-[13px] leading-relaxed text-white/70">
           Your browser reported that it cannot create a WebGL context — the
-          graphics driver offered no usable configuration. Nomad needs WebGL
+          graphics driver offered no usable configuration. Milewalker needs WebGL
           to render. This is a device/browser issue, not a game bug. Try:
         </p>
         <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-[13px] text-white/85">

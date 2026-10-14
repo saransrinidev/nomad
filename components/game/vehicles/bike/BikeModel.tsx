@@ -10,7 +10,7 @@
 //
 // Performance: shared geometries/materials via useMemo, InstancedMesh for
 // tread blocks + spokes (4 draw calls instead of ~80), castShadow only on
-// major masses, a single CanvasTexture for NOMAD branding.
+// major masses, a single CanvasTexture for Milewalker branding.
 
 "use client";
 
@@ -34,7 +34,7 @@ const SPOKE_COUNT = 18;
 const TIRE_OUTER = 0.35;
 const RIM_R = 0.20;
 
-function makeNomadTexture(): THREE.CanvasTexture | null {
+function makeMilewalkerTexture(): THREE.CanvasTexture | null {
   if (typeof document === "undefined") return null;
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -45,7 +45,7 @@ function makeNomadTexture(): THREE.CanvasTexture | null {
   ctx.font = "700 72px Georgia, serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("NOMAD", 256, 52);
+  ctx.fillText("MILEWALKER", 256, 52);
   ctx.fillRect(120, 92, 272, 5);
   ctx.font = "600 26px Arial, sans-serif";
   ctx.fillText("3 5 0", 256, 110);
@@ -210,7 +210,7 @@ export default function BikeModel({
     []
   );
 
-  const nomadTex = useMemo(() => makeNomadTexture(), []);
+  const milewalkerTex = useMemo(() => makeMilewalkerTexture(), []);
 
   const exhaustCurve = useMemo(
     () =>
@@ -312,18 +312,18 @@ export default function BikeModel({
         <boxGeometry args={[0.28, 0.2, 0.3]} />
       </mesh>
 
-      {/* Fuel tank (olive) + cap + NOMAD decals */}
+      {/* Fuel tank (olive) + cap + Milewalker decals */}
       <mesh position={[0, 0.84, 0.3]} scale={[1, 0.72, 1.35]} castShadow material={mats.paint}>
         <sphereGeometry args={[0.21, 24, 18]} />
       </mesh>
       <mesh position={[0, 0.985, 0.28]} material={mats.chrome}>
         <cylinderGeometry args={[0.035, 0.035, 0.025, 16]} />
       </mesh>
-      {nomadTex &&
+      {milewalkerTex &&
         [-0.201, 0.201].map((x, i) => (
           <mesh key={x} position={[x, 0.84, 0.3]} rotation-y={i === 0 ? -Math.PI / 2 : Math.PI / 2}>
             <planeGeometry args={[0.42, 0.105]} />
-            <meshStandardMaterial map={nomadTex} transparent roughness={0.4} metalness={0.1} />
+            <meshStandardMaterial map={milewalkerTex} transparent roughness={0.4} metalness={0.1} />
           </mesh>
         ))}
 

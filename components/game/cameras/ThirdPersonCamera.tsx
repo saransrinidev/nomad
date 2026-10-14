@@ -153,7 +153,7 @@ export default function ThirdPersonCamera({
     };
 
     window.addEventListener("keydown", onKey);
-    window.addEventListener("nomad:relock", onRelock);
+    window.addEventListener("milewalker:relock", onRelock);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     document.addEventListener("mousemove", onMouseMove);
     el.addEventListener("pointerdown", onDown);
@@ -164,7 +164,7 @@ export default function ThirdPersonCamera({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("nomad:relock", onRelock);
+    window.removeEventListener("milewalker:relock", onRelock);
       document.removeEventListener("pointerlockchange", onPointerLockChange);
       document.removeEventListener("mousemove", onMouseMove);
       el.removeEventListener("pointerdown", onDown);
