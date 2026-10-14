@@ -2108,25 +2108,32 @@ export interface RailwayMapData {
   trains: { x: number; z: number }[];
 }
 
+// Line paths + stations are static after module init (trackPointAt is
+// deterministic) — build once, reuse every map tick. Only the live train
+// markers are fresh per call.
+let railMapStaticCache: RailwayMapData["lines"] | null = null;
+
 /** Back-compat shape for the previous single-line renderer. */export function getRailwayMapData(): RailwayMapData {
-  const lines = getLines().map((r) => {
-    // Draw wall-to-wall (no sim stubs past the dead ends).
-    const { s0, s1 } = lineRenderBounds(r.def.id);
-    const path: { x: number; z: number }[] = [];
-    const steps = 80;
-    for (let k = 0; k <= steps; k++) {
-      const p = trackPointAt(r.def.id, s0 + ((s1 - s0) * k) / steps);
-      path.push({ x: p.x, z: p.z });
-    }
-    return {
-      path,
-      stations: r.stations.map((s) => ({ name: s.short, x: s.x, z: s.z })),
-      color: r.def.color,
-    };
-  });
+  if (!railMapStaticCache) {
+    railMapStaticCache = getLines().map((r) => {
+      // Draw wall-to-wall (no sim stubs past the dead ends).
+      const { s0, s1 } = lineRenderBounds(r.def.id);
+      const path: { x: number; z: number }[] = [];
+      const steps = 80;
+      for (let k = 0; k <= steps; k++) {
+        const p = trackPointAt(r.def.id, s0 + ((s1 - s0) * k) / steps);
+        path.push({ x: p.x, z: p.z });
+      }
+      return {
+        path,
+        stations: r.stations.map((s) => ({ name: s.short, x: s.x, z: s.z })),
+        color: r.def.color,
+      };
+    });
+  }
   const trains: { x: number; z: number }[] = [];
   for (const seg of segments.values()) trains.push({ x: seg.hx, z: seg.hz });
-  return { lines, trains };
+  return { lines: railMapStaticCache, trains };
 }
 
 // --- Spawn safety: district land, never station premises ---

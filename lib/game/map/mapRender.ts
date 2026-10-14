@@ -57,7 +57,10 @@ export function headingAngle(yaw: number): number {
   return Math.atan2(Math.sin(yaw), -Math.cos(yaw));
 }
 
-export function renderMap(
+/** Static cartography layer: ocean, TN, districts, highlight, grid,
+ *  rivers, rails + stations. Redraw only when focus/zoom/orientation or the
+ *  underlying data changes — the maps cache this on an offscreen canvas. */
+export function renderMapStatic(
   ctx: CanvasRenderingContext2D,
   size: number,
   range: number,
@@ -172,11 +175,9 @@ export function renderMap(
       ctx.fill();
       ctx.strokeStyle = stroke;
       ctx.lineWidth = 2.5;
-      // Crisp border at any zoom + soft outer glow so it reads on green.
-      ctx.shadowColor = "rgba(232,113,10,0.55)";
-      ctx.shadowBlur = 6;
+      // Crisp border at any zoom (no shadowBlur: it forces an offscreen
+      // blur pass on every redraw).
       ctx.stroke();
-      ctx.shadowBlur = 0;
       // Inner hairline for a clean cartographic edge.
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
       ctx.lineWidth = 1;
@@ -250,7 +251,8 @@ export function renderMap(
     }
   }
 
-  // Railway: every line, its stations + names, and live train markers.
+  // Railway lines + stations (static). Live train markers move every
+  // tick — they draw in renderMapDynamic instead.
   if (opts.railway) {
     const rw = opts.railway;
     // Station name anchors already labeled (screen px) + names already
@@ -297,7 +299,45 @@ export function renderMap(
       }
       ctx.textBaseline = "alphabetic";
     }
-    for (const tr of rw.trains) {
+  }
+
+  ctx.restore(); // world rotation
+  ctx.restore(); // clip
+}
+
+/** Live layer: train markers, bike pin, player arrow, north marker.
+ *  Drawn every tick over the cached static blit — cheap (a few dozen
+ *  primitives, no text-heavy cartography). */
+export function renderMapDynamic(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  range: number,
+  snap: MapSnapshot,
+  opts: MapDrawOptions = {},
+): void {
+  const s = size / (range * 2); // px per meter
+  const C = size / 2;
+  const headAngle = headingAngle(snap.yaw);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, size, size);
+  ctx.clip();
+
+  // In heading-up mode, rotate the world so travel direction is up.
+  ctx.save();
+  ctx.translate(C, C);
+  if (!snap.northUp) ctx.rotate(-headAngle);
+  ctx.translate(-C, -C);
+
+  const toMap = (x: number, z: number): [number, number] => [
+    C + (x - snap.focusX) * s,
+    C + (z - snap.focusZ) * s,
+  ];
+
+  // Live train markers.
+  if (opts.railway) {
+    for (const tr of opts.railway.trains) {
       const [tx, tz] = toMap(tr.x, tr.z);
       ctx.fillStyle = "#c0392b";
       ctx.beginPath();
@@ -417,4 +457,16 @@ export function renderMap(
   }
 
   ctx.restore();
+}
+
+/** Full redraw (static + dynamic). Back-compat for one-shot paints. */
+export function renderMap(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  range: number,
+  snap: MapSnapshot,
+  opts: MapDrawOptions = {},
+): void {
+  renderMapStatic(ctx, size, range, snap, opts);
+  renderMapDynamic(ctx, size, range, snap, opts);
 }

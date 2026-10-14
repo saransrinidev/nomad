@@ -10,10 +10,10 @@
 
 "use client";
 
-import { useMemo, useRef } from "react";
-import * as THREE from "three";
+import { useEffect, useMemo, useState } from "react";
 import { bridgeWalks } from "@/lib/game/map/railway";
-import { useFillInstances } from "./Railway";
+import { getQuality, subscribeQuality } from "@/lib/game/quality";
+import { ChunkedInstancedMesh } from "./chunkedInstances";
 
 const DECK_W = 5;
 const DECK_T = 0.3;
@@ -71,10 +71,8 @@ export function BridgeDeck({
 }
 
 export default function Bridges() {
-  const deckRef = useRef<THREE.InstancedMesh>(null!);
-  const beamRef = useRef<THREE.InstancedMesh>(null!);
-  const postRef = useRef<THREE.InstancedMesh>(null!);
-
+  const [lowQ, setLowQ] = useState(() => getQuality().level === "low");
+  useEffect(() => subscribeQuality(() => setLowQ(getQuality().level === "low")), []);
   // Decks render for every walk segment; beams/posts only where the
   // segment is railed (no handrails in multi-line overlap zones — same
   // flag the collision uses, so visuals and rails match exactly).
@@ -114,24 +112,35 @@ export default function Bridges() {
     return { decks, beams, posts };
   }, []);
 
-  useFillInstances(deckRef, decks, 1);
-  useFillInstances(beamRef, beams, 1);
-  useFillInstances(postRef, posts, 1);
-
+  // Chunked: matrices written once, each ~500 m cell frustum-culled by
+  // three.js, far cells hidden by radius (no per-move matrix rewrites).
+  // Low uses Lambert (no per-pixel PBR) on these wide-coverage surfaces.
   return (
     <group>
-      <instancedMesh ref={deckRef} args={[undefined, undefined, decks.length]} frustumCulled={false}>
+      <ChunkedInstancedMesh items={decks} baseLen={1} chunkSize={500}>
         <boxGeometry args={[DECK_W, DECK_T, 1]} />
-        <meshStandardMaterial color="#8a8f98" roughness={0.9} />
-      </instancedMesh>
-      <instancedMesh ref={beamRef} args={[undefined, undefined, beams.length]} frustumCulled={false}>
+        {lowQ ? (
+          <meshLambertMaterial color="#8a8f98" />
+        ) : (
+          <meshStandardMaterial color="#8a8f98" roughness={0.9} />
+        )}
+      </ChunkedInstancedMesh>
+      <ChunkedInstancedMesh items={beams} baseLen={1} chunkSize={500}>
         <boxGeometry args={[0.15, 0.5, 1]} />
-        <meshStandardMaterial color="#6b6259" roughness={1} />
-      </instancedMesh>
-      <instancedMesh ref={postRef} args={[undefined, undefined, posts.length]} frustumCulled={false}>
+        {lowQ ? (
+          <meshLambertMaterial color="#6b6259" />
+        ) : (
+          <meshStandardMaterial color="#6b6259" roughness={1} />
+        )}
+      </ChunkedInstancedMesh>
+      <ChunkedInstancedMesh items={posts} baseLen={1} chunkSize={500}>
         <boxGeometry args={[0.12, POST_H, 0.12]} />
-        <meshStandardMaterial color="#3a3f45" roughness={0.8} />
-      </instancedMesh>
+        {lowQ ? (
+          <meshLambertMaterial color="#3a3f45" />
+        ) : (
+          <meshStandardMaterial color="#3a3f45" roughness={0.8} />
+        )}
+      </ChunkedInstancedMesh>
     </group>
   );
 }

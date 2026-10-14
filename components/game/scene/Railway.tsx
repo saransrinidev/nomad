@@ -5,14 +5,16 @@
 
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { getLine, getLines, lineDeparture, lineEndWalls, lineRenderBounds, OPEN_PLATFORM_FACES, railBridgeSpans, railSurfaceY, trackDeckAt, trackPointAt } from "@/lib/game/map/railway";
 import { consistLength } from "@/lib/game/map/railway";
 import { groundHeight } from "@/lib/game/map/terrain";
 import { formatTime, nightFactor } from "@/lib/game/map/time";
+import { getQuality, qualitySleeperStride, subscribeQuality } from "@/lib/game/quality";
 import type { GameWorld } from "@/lib/game/state";
+import { ChunkedInstancedMesh, useStaticInstances } from "./chunkedInstances";
 
 const BALLAST_W = 4.5;
 const RAIL_GAUGE = 0.85; // half-gauge: rails at ±0.85 m
@@ -357,7 +359,7 @@ function DepartureBoard({
           <meshStandardMaterial color="#2c2f34" roughness={0.8} />
         </mesh>
       ))}
-      <mesh position={[0, 2.9, 0]} castShadow>
+      <mesh position={[0, 2.9, 0]}>
         <boxGeometry args={[2.9, 1.7, 0.2]} />
         <meshStandardMaterial color="#111111" roughness={0.7} />
       </mesh>
@@ -679,7 +681,7 @@ function VillupuramShed() {
       ),
     [],
   );
-  useFillInstances(lampRef, lamps, 1);
+  useStaticInstances(lampRef, lamps, 1);
   return (
     <group position={[v.x + 16.5, gy, v.z]}>
       {[-21.5, -7, 7, 21.5].map((x) =>
@@ -699,7 +701,7 @@ function VillupuramShed() {
         <meshStandardMaterial color="#f3e3c2" roughness={0.7} />
       </mesh>
       {/* Tube-light battens over each track (one instanced draw call). */}
-      <instancedMesh ref={lampRef} args={[undefined, undefined, lamps.length]} frustumCulled={false}>
+      <instancedMesh ref={lampRef} args={[undefined, undefined, lamps.length]}>
         <boxGeometry args={[0.5, 0.12, 1.4]} />
         <meshBasicMaterial color="#fff3d0" toneMapped={false} />
       </instancedMesh>
@@ -1343,7 +1345,7 @@ function TrichyShed() {
       ),
     [],
   );
-  useFillInstances(lampRef, lamps, 1);
+  useStaticInstances(lampRef, lamps, 1);
   return (
     <group position={[t.x, gy, t.z - 8]}>
       {/* Columns stand only in the gaps: R4/R1 platforms (+8), R1 track /
@@ -1370,7 +1372,7 @@ function TrichyShed() {
         <meshStandardMaterial color="#f3e3c2" roughness={0.7} />
       </mesh>
       {/* Tube battens mounted under the roof (one draw call, always lit). */}
-      <instancedMesh ref={lampRef} args={[undefined, undefined, lamps.length]} frustumCulled={false}>
+      <instancedMesh ref={lampRef} args={[undefined, undefined, lamps.length]}>
         <boxGeometry args={[1.4, 0.12, 0.5]} />
         <meshBasicMaterial color="#fff3d0" toneMapped={false} />
       </instancedMesh>
@@ -1496,14 +1498,14 @@ function BufferStop({ wall }: { wall: { x: number; z: number; yaw: number } }) {
       </mesh>
       {/* Legs */}
       {[-1.0, 1.0].map((x) => (
-        <mesh key={x} position={[x, 0.65, 0]} castShadow>
+        <mesh key={x} position={[x, 0.65, 0]}>
           <boxGeometry args={[0.28, 1.1, 0.5]} />
           <meshStandardMaterial color="#2b2e34" roughness={0.8} />
         </mesh>
       ))}
       {/* Striped beam across both rails */}
       {[-1.04, -0.52, 0, 0.52, 1.04].map((x, i) => (
-        <mesh key={x} position={[x, 1.25, 0]} castShadow>
+        <mesh key={x} position={[x, 1.25, 0]}>
           <boxGeometry args={[0.5, 0.5, 0.24]} />
           <meshStandardMaterial color={i % 2 === 0 ? "#c0392b" : "#f5f5f5"} roughness={0.6} />
         </mesh>
@@ -1518,13 +1520,15 @@ function BufferStop({ wall }: { wall: { x: number; z: number; yaw: number } }) {
 }
 
 export default function Railway({ worldRef }: { worldRef?: RefObject<GameWorld> }) {
+  const [lowQ, setLowQ] = useState(() => getQuality().level === "low");
+  useEffect(() => subscribeQuality(() => setLowQ(getQuality().level === "low")), []);
   const { pieces, sleepers, piers } = useTrackPieces();
-  const ballastRef = useRef<THREE.InstancedMesh>(null);
-  const railRef = useRef<THREE.InstancedMesh>(null);
-  const sleeperRef = useRef<THREE.InstancedMesh>(null);
-  const pierRef = useRef<THREE.InstancedMesh>(null);
   const railMetal = useRailMetalTextures();
 
+  const ballastItems = useMemo(
+    () => pieces.map((p) => ({ ...p, y: p.y + 0.05 })),
+    [pieces],
+  );
   const railItems = useMemo(() => {
     const out: { x: number; y: number; z: number; yaw: number; len: number; dx: number; dz: number }[] = [];
     for (const p of pieces) {
@@ -1537,10 +1541,8 @@ export default function Railway({ worldRef }: { worldRef?: RefObject<GameWorld> 
     return out;
   }, [pieces]);
 
-  useFillInstances(ballastRef, pieces.map((p) => ({ ...p, y: p.y + 0.05 })), 1);
-  useFillInstances(railRef, railItems, 1);
-  useFillInstances(sleeperRef, sleepers, 1);
-  useFillInstances(pierRef, piers, 1);
+  // Chunked + frustum-culled: matrices written once, off-screen chunks
+  // cost zero GPU, far chunks hide via visible flag (no per-move uploads).
 
   return (
     <group>
@@ -1549,33 +1551,54 @@ export default function Railway({ worldRef }: { worldRef?: RefObject<GameWorld> 
       {/* Roaming station light pools (2 lights cover all 7 sheds). */}
       <StationGlow worldRef={worldRef} />
       {/* Ballast beds (unit box scaled per piece) */}
-      <instancedMesh ref={ballastRef} args={[undefined, undefined, pieces.length]} frustumCulled={false}>
+      <ChunkedInstancedMesh items={ballastItems} baseLen={1} chunkSize={500}>
         <boxGeometry args={[BALLAST_W, 0.18, 1]} />
-        <meshStandardMaterial color="#6b6259" roughness={1} />
-      </instancedMesh>
+        {lowQ ? (
+          <meshLambertMaterial color="#6b6259" />
+        ) : (
+          <meshStandardMaterial color="#6b6259" roughness={1} />
+        )}
+      </ChunkedInstancedMesh>
       {/* Twin steel rails (PBR metal touch: map + metallic/roughness/normal) */}
-      <instancedMesh ref={railRef} args={[undefined, undefined, railItems.length]} frustumCulled={false}>
+      <ChunkedInstancedMesh items={railItems} baseLen={1} chunkSize={500}>
         <boxGeometry args={[0.09, 0.14, 1]} />
-        <meshStandardMaterial
-          map={railMetal?.map}
-          metalnessMap={railMetal?.metalnessMap}
-          roughnessMap={railMetal?.roughnessMap}
-          normalMap={railMetal?.normalMap}
-          color="#ffffff"
-          metalness={1}
-          roughness={1}
-        />
-      </instancedMesh>
-      {/* Sleepers */}
-      <instancedMesh ref={sleeperRef} args={[undefined, undefined, sleepers.length]} frustumCulled={false}>
+        {lowQ ? (
+          <meshLambertMaterial color="#8a9199" />
+        ) : (
+          <meshStandardMaterial
+            map={railMetal?.map}
+            metalnessMap={railMetal?.metalnessMap}
+            roughnessMap={railMetal?.roughnessMap}
+            normalMap={railMetal?.normalMap}
+            color="#ffffff"
+            metalness={1}
+            roughness={1}
+          />
+        )}
+      </ChunkedInstancedMesh>
+      {/* Sleepers (stride thins on low quality via re-chunk, no per-frame CPU) */}
+      <ChunkedInstancedMesh
+        items={sleepers}
+        baseLen={1}
+        chunkSize={500}
+        stride={lowQ ? qualitySleeperStride() : 1}
+      >
         <boxGeometry args={[2.3, 0.1, 0.55]} />
-        <meshStandardMaterial color="#5a4632" roughness={1} />
-      </instancedMesh>
+        {lowQ ? (
+          <meshLambertMaterial color="#5a4632" />
+        ) : (
+          <meshStandardMaterial color="#5a4632" roughness={1} />
+        )}
+      </ChunkedInstancedMesh>
       {/* Trestle piers carrying the deck over water */}
-      <instancedMesh ref={pierRef} args={[undefined, undefined, piers.length]} frustumCulled={false}>
+      <ChunkedInstancedMesh items={piers} baseLen={1} chunkSize={800}>
         <boxGeometry args={[1.6, 1, 1.6]} />
-        <meshStandardMaterial color="#8a8f98" roughness={0.9} />
-      </instancedMesh>
+        {lowQ ? (
+          <meshLambertMaterial color="#8a8f98" />
+        ) : (
+          <meshStandardMaterial color="#8a8f98" roughness={0.9} />
+        )}
+      </ChunkedInstancedMesh>
       {getLines().map((line) =>
         line.stations.map((_, i) => {
           const key = `${line.def.id}:${i}`;

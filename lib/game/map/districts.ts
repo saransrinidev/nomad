@@ -208,42 +208,67 @@ export interface MapDivisions {
 }
 
 /** Rings + labels for the maps: exact GeoJSON when loaded, else fallback. */
+let divisionsCache: MapDivisions | null = null;
+let divisionsLoaded: DistrictPoly[] | null = null;
 export function getMapDivisions(): MapDivisions {
+  // Static per load-state (flips once when the GeoJSON fetch lands) —
+  // the maps call this every tick, so never rebuild arrays per call.
+  if (divisionsCache && divisionsLoaded === loaded) return divisionsCache;
+  divisionsLoaded = loaded;
   if (loaded) {
-    return { rings: getDistrictRings(), labels: getDistrictLabelPoints(), exact: true };
+    divisionsCache = { rings: getDistrictRings(), labels: getDistrictLabelPoints(), exact: true };
+  } else {
+    divisionsCache = { rings: getFallbackRings(), labels: getFallbackLabelPoints(), exact: false };
   }
-  return { rings: getFallbackRings(), labels: getFallbackLabelPoints(), exact: false };
+  return divisionsCache;
 }
 
 export const THANJAVUR_NAME = "Thanjavur";
 
 /** Outer rings of Thanjavur alone — exact GeoJSON polys when loaded, else the fallback box. */
+let thanjavurRingsCache: ProjectedRing[][] | null = null;
+let thanjavurRingsLoaded: DistrictPoly[] | null = null;
 export function getThanjavurRings(): ProjectedRing[][] {
+  if (thanjavurRingsCache && thanjavurRingsLoaded === loaded) return thanjavurRingsCache;
+  thanjavurRingsLoaded = loaded;
   if (loaded) {
     const match = loaded.filter((d) => d.name.toLowerCase() === THANJAVUR_NAME.toLowerCase());
     if (match.length > 0) {
       const out: ProjectedRing[][] = [];
       for (const d of match) for (const p of d.polys) out.push(p.outer);
-      if (out.length > 0) return out;
+      if (out.length > 0) {
+        thanjavurRingsCache = out;
+        return out;
+      }
     }
   }
   const box = FALLBACK_DISTRICTS.find(
     (b) => b.name.toLowerCase() === THANJAVUR_NAME.toLowerCase(),
   );
-  if (!box) return [];
+  if (!box) {
+    thanjavurRingsCache = [];
+    return [];
+  }
   const corners: [number, number][] = [
     [box.minLon, box.minLat],
     [box.maxLon, box.minLat],
     [box.maxLon, box.maxLat],
     [box.minLon, box.maxLat],
   ];
-  return [corners.map(([lon, lat]) => latLonToGame(lon, lat))];
+  thanjavurRingsCache = [corners.map(([lon, lat]) => latLonToGame(lon, lat))];
+  return thanjavurRingsCache;
 }
 
 /** Label anchor for Thanjavur alone (centroid of its first ring). */
+let thanjavurLabelCache: { label: { name: string; x: number; z: number } | null; rings: ProjectedRing[][] } | null = null;
 export function getThanjavurLabel(): { name: string; x: number; z: number } | null {
   const rings = getThanjavurRings();
-  if (rings.length === 0) return null;
+  // Rings array identity is stable per load-state — reuse the label too.
+  if (thanjavurLabelCache && thanjavurLabelCache.rings === rings) return thanjavurLabelCache.label;
+  if (rings.length === 0) {
+    thanjavurLabelCache = { label: null, rings };
+    return null;
+  }
   let x = 0;
   let z = 0;
   const ring = rings[0];
@@ -251,7 +276,9 @@ export function getThanjavurLabel(): { name: string; x: number; z: number } | nu
     x += p.x;
     z += p.z;
   }
-  return { name: THANJAVUR_NAME, x: x / ring.length, z: z / ring.length };
+  const label = { name: THANJAVUR_NAME, x: x / ring.length, z: z / ring.length };
+  thanjavurLabelCache = { label, rings };
+  return label;
 }
 
 // --- Fallback: coarse lon/lat boxes (half-open intervals) ---

@@ -277,7 +277,7 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
   const tmpLight = useMemo(() => new THREE.Color(), []);
   const tmpTop = useMemo(() => new THREE.Color(), []);
 
-  useFrame(({ scene, gl }, rawDt) => {
+  useFrame(({ scene, gl, camera }, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const world = worldRef.current;
     if (!world.paused) world.time = advanceTime(world.time, dt);
@@ -305,7 +305,10 @@ export default function Sky({ worldRef }: { worldRef: RefObject<GameWorld> }) {
     if (scene.fog instanceof THREE.Fog) {
       scene.fog.color.set(sample.fog);
       scene.fog.near = 250;
-      scene.fog.far = sample.fogFar;
+      // Clamp to the camera's far plane so nothing past far is fogged IN
+      // uselessly; Low shrinks far (qualityCameraFar) and fog follows.
+      const cam = camera as THREE.PerspectiveCamera;
+      scene.fog.far = Math.min(sample.fogFar, cam.far);
     }
     if (scene.background instanceof THREE.Color) scene.background.set(sample.fog);
     // Damped exposure so brightness breathes instead of popping.

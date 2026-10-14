@@ -11,12 +11,13 @@
 
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { COACH_LEN, carLocal, getLiveCars } from "@/lib/game/map/railway";
 import type { GameWorld } from "@/lib/game/state";
+import { getQuality, qualityTrainSimple, subscribeQuality } from "@/lib/game/quality";
 import {
   COACH_COLORS,
   coachMaterials,
@@ -372,6 +373,10 @@ export default function IndianRailwayCoach({
   const HL = length / 2;
   const HW = width / 2;
   const mats = useMemo(() => coachMaterials(), []);
+  // Low quality: no interiors, lettering or weathering (shell + doors +
+  // roof only — the 1-box impostor covers these cars at range anyway).
+  const [lowQ, setLowQ] = useState(() => getQuality().level === "low");
+  useEffect(() => subscribeQuality(() => setLowQ(getQuality().level === "low")), []);
 
   const shellGeo = useMemo(() => mergeParts(shellParts(HL)), [HL]);
   const darkGeo = useMemo(() => mergeParts(darkParts(HL)), [HL]);
@@ -421,10 +426,20 @@ export default function IndianRailwayCoach({
   const roofOpacity = useRef(1);
   const doorRefs = useRef<Array<THREE.Group | null>>([]);
   const doorSlide = useRef<number[]>([0, 0, 0, 0]);
-  useFrame((_, rawDt) => {
+  // Low quality skips interiors entirely (below) — and this loop skips
+  // everything for cars past the simple radius (Train.tsx shows the
+  // 1-box impostor there instead; doors/roofs are invisible that far).
+  useFrame(({ camera }, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const world = worldRef.current;
     if (!world || world.paused) return;
+    const cars = getLiveCars(lineId);
+    const c = cars[carIndex];
+    if (!c) return;
+    const cdx = c.x - camera.position.x;
+    const cdz = c.z - camera.position.z;
+    const simpleR = qualityTrainSimple();
+    if (cdx * cdx + cdz * cdz > simpleR * simpleR) return;
     const tr = world.trains.find((t) => t.line === lineId);
     const stopped = !!tr && tr.wait > 0;
     DOORWAYS.forEach((d, i) => {
@@ -435,10 +450,8 @@ export default function IndianRailwayCoach({
       if (g) g.position.z = d.zc + cur;
     });
     // Fade this car's roof while the rider is inside it.
-    const cars = getLiveCars(lineId);
-    const c = cars[carIndex];
     let inside = false;
-    if (c) {
+    {
       const local = carLocal(c, world.playerPos.x, world.playerPos.z);
       inside = Math.abs(local.lx) < HW + 0.2 && Math.abs(local.lz) < HL + 0.2;
     }
@@ -473,7 +486,7 @@ export default function IndianRailwayCoach({
       {/* Merged static masses (no passengers — NPCs come later) */}
       <mesh geometry={shellGeo} material={mats.paint} castShadow receiveShadow />
       <mesh geometry={darkGeo} material={mats.dark} />
-      <mesh geometry={interiorGeo} material={mats.paint} />
+      {!lowQ && <mesh geometry={interiorGeo} material={mats.paint} />}
       {/* Window glass (one merged mesh, rounded-corner alpha texture) */}
       <mesh geometry={glassGeo} material={glassMat} />
       {/* Sliding doorway leaves + their window glass */}
@@ -485,7 +498,7 @@ export default function IndianRailwayCoach({
           }}
           position={[d.sx * (HW + 0.07), 0, d.zc]}
         >
-          <mesh geometry={leafGeo} material={mats.paint} castShadow />
+          <mesh geometry={leafGeo} material={mats.paint} />
           <mesh geometry={leafGlassGeo} material={mats.glass} position={[d.sx * 0.065, 2.5, 0]} rotation-y={d.sx * Math.PI * 0.5} />
         </group>
       ))}
@@ -500,7 +513,7 @@ export default function IndianRailwayCoach({
             transparent
           />
         </mesh>
-        <mesh geometry={lampGeo}>
+        <mesh geometry={lampGeo} visible={!lowQ}>
           <meshStandardMaterial
             ref={lampMatRef}
             color="#fff6dc"
@@ -510,16 +523,18 @@ export default function IndianRailwayCoach({
           />
         </mesh>
       </group>
-      {/* Coach number + railway markings, both sides */}
-      {letterTex &&
+      {/* Coach number + railway markings, both sides (skipped on Low) */}
+      {!lowQ &&
+        letterTex &&
         [1, -1].map((sx) => (
           <mesh key={sx} position={[sx * (HW + 0.075), 2.99, 0]} rotation-y={sx * Math.PI * 0.5}>
             <planeGeometry args={[3.6, 0.24]} />
             <meshStandardMaterial map={letterTex} transparent roughness={0.5} metalness={0.1} />
           </mesh>
         ))}
-      {/* Weathering decals (transparent grime/rust, no geometry cost) */}
-      {[grimeA, grimeB].map(
+      {/* Weathering decals (skipped on Low) */}
+      {!lowQ &&
+        [grimeA, grimeB].map(
         (tex, ti) =>
           tex &&
           [1, -1].map((sx) => (

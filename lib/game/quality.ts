@@ -95,3 +95,39 @@ export function sampleQuality(dt: number): QualityLevel {
   }
   return state.level;
 }
+
+export function isLowQuality(): boolean {
+  return state.level === "low";
+}
+
+/** How far (m) to stream track/bridge instances around the camera. */
+export function qualityViewRadius(): number {
+  return state.level === "low" ? 900 : 1500;
+}
+
+/** Draw every Nth sleeper (rails/ballast stay dense so the track doesn't gap). */
+export function qualitySleeperStride(): number {
+  return state.level === "low" ? 3 : 1;
+}
+
+/** Past this distance coaches drop glass/doors/decals. */
+export function qualityTrainSimple(): number {
+  return state.level === "low" ? 260 : 480;
+}
+
+/** Past this distance a consist car is not drawn at all. */
+export function qualityTrainHide(): number {
+  return state.level === "low" ? 650 : 1100;
+}
+
+export function qualityCameraFar(): number {
+  return state.level === "low" ? 2600 : 4000;
+}
+
+export function qualityOceanSize(): number {
+  return state.level === "low" ? 5000 : 9000;
+}
+
+export function qualityGrassAnisotropy(): number {
+  return state.level === "low" ? 1 : 8;
+}

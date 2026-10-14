@@ -256,8 +256,11 @@ export function distToRiver(x: number, z: number): { d: number; id: string } | n
 }
 
 /** Sparse centerline polylines in game meters (for the 2D maps). */
+let polylinesCache: { x: number; z: number }[][] | null = null;
 export function riverPolylines(): { x: number; z: number }[][] {
-  return getBuilt().map((r) =>
+  // Rivers are static after first build — never reallocate per map tick.
+  if (polylinesCache) return polylinesCache;
+  polylinesCache = getBuilt().map((r) =>
     r.segs.map((s) => ({ x: s.ax, z: s.az })).concat([
       {
         x: r.segs[r.segs.length - 1].bx,
@@ -265,6 +268,7 @@ export function riverPolylines(): { x: number; z: number }[][] {
       },
     ]),
   );
+  return polylinesCache;
 }
 
 /**

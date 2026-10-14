@@ -10,6 +10,7 @@ import { useMemo, useRef, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import {
+  COACH_LEN,
   LINES,
   LOCO_LEN,
   coachInteriorAt,
@@ -22,9 +23,12 @@ import {
 } from "@/lib/game/map/railway";
 import type { GameWorld } from "@/lib/game/state";
 import { updateTrain } from "@/lib/game/audio";
+import { qualityTrainHide, qualityTrainSimple } from "@/lib/game/quality";
 import IndianRailwayCoach from "./IndianRailwayCoach";
 
 const CAR_W = 4;
+// LOD swap-in: one Lambert box per car past qualityTrainSimple().
+// Colors match the detailed stock (loco red / coach blue).
 
 function Wheels({ len }: { len: number }) {
   // Two bogies per car, one visible disc pair each side.
@@ -215,6 +219,13 @@ function Coach({ lineId, carIndex, worldRef }: { lineId: string; carIndex: numbe
 
 export default function Train({ worldRef }: { worldRef: RefObject<GameWorld> }) {
   const carRefs = useRef(new Map<string, THREE.Group | null>());
+  // LOD plumbing (no React state — visibility flags only, toggled at 4 Hz):
+  // per-line group for whole-consist hide, per-car detail/simple swap.
+  const lineRefs = useRef(new Map<string, THREE.Group | null>());
+  const detailRefs = useRef(new Map<string, THREE.Group | null>());
+  const simpleRefs = useRef(new Map<string, THREE.Mesh | null>());
+  const lodAcc = useRef(0);
+  const hiddenLines = useRef(new Set<string>());
   // Single warm cabin light that follows the rider's coach: full interior
   // light where the player is, zero cost everywhere else (one light total).
   const cabinLight = useRef<THREE.PointLight>(null!);
@@ -227,7 +238,7 @@ export default function Train({ worldRef }: { worldRef: RefObject<GameWorld> }) 
   }, []);
   const beamRefs = useRef(new Map<string, THREE.SpotLight | null>());
 
-  useFrame((_, rawDt) => {
+  useFrame(({ camera }, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const world = worldRef.current;
     // Keep trains running live while the fullscreen map is open (mapOpen
@@ -239,19 +250,34 @@ export default function Train({ worldRef }: { worldRef: RefObject<GameWorld> }) 
     }
     updateTrains(world, dt);
     updateTrain(world, dt);
+    const camX = camera.position.x;
+    const camZ = camera.position.z;
+    const hideR = qualityTrainHide();
+    const simpleR = qualityTrainSimple();
+    const minD2 = new Map<string, number>();
     for (const t of world.trains) {
       const cars = trainCarCenters(t.line, t.s, t.dir);
+      let best = Infinity;
+      const hidden = hiddenLines.current.has(t.line);
       for (let i = 0; i < cars.length; i++) {
-        const g = carRefs.current.get(`${t.line}:${i}`);
-        if (!g) continue;
         const c = cars[i];
-        g.position.set(c.x, c.y, c.z);
-        g.rotation.set(0, c.yaw, 0);
+        if (!hidden) {
+          const g = carRefs.current.get(`${t.line}:${i}`);
+          if (g) {
+            g.position.set(c.x, c.y, c.z);
+            g.rotation.set(0, c.yaw, 0);
+          }
+        }
+        const dx = c.x - camX;
+        const dz = c.z - camZ;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < best) best = d2;
       }
+      minD2.set(t.line, best);
       // Lead beam: nose of the leading engine + 40 m down the track.
       const spot = beamRefs.current.get(t.line);
       const tgt = beamTargets.get(t.line);
-      if (spot && tgt) {
+      if (spot && tgt && !hidden) {
         const C = consistLength(getLine(t.line).def.coachCount);
         const lead = trackPointAt(t.line, t.s + t.dir * (C / 2));
         const ly = trackDeckAt(t.line, t.s + t.dir * (C / 2));
@@ -259,6 +285,31 @@ export default function Train({ worldRef }: { worldRef: RefObject<GameWorld> }) 
         const fx = Math.sin(lead.yaw) * t.dir;
         const fz = Math.cos(lead.yaw) * t.dir;
         tgt.position.set(lead.x + fx * 40, ly + 1.2, lead.z + fz * 40);
+      }
+    }
+    // LOD eval at 4 Hz: hide whole consists past hide radius, swap far
+    // cars to their 1-box impostor past the simple radius.
+    lodAcc.current += dt;
+    if (lodAcc.current > 0.25) {
+      lodAcc.current = 0;
+      for (const t of world.trains) {
+        const best = minD2.get(t.line) ?? 0;
+        const hide = best > hideR * hideR;
+        const simple = !hide && best > simpleR * simpleR;
+        if (hide) hiddenLines.current.add(t.line);
+        else hiddenLines.current.delete(t.line);
+        const lg = lineRefs.current.get(t.line);
+        if (lg) lg.visible = !hide;
+        const spot = beamRefs.current.get(t.line);
+        if (spot) spot.visible = !hide;
+        const n = getLine(t.line).def.coachCount + 2;
+        for (let i = 0; i < n; i++) {
+          const key = `${t.line}:${i}`;
+          const d = detailRefs.current.get(key);
+          const s = simpleRefs.current.get(key);
+          if (d) d.visible = !simple;
+          if (s) s.visible = simple;
+        }
       }
     }
     const cab = coachInteriorAt(world.playerPos.x, world.playerPos.z);
@@ -296,24 +347,52 @@ export default function Train({ worldRef }: { worldRef: RefObject<GameWorld> }) 
           <primitive object={beamTargets.get(line.id)!} position={[0, 0, 0]} />
         </group>
       ))}
-      {LINES.map((line) =>
-        Array.from({ length: line.coachCount + 2 }).map((_, i) => (
-          <group
-            key={`${line.id}:${i}`}
-            ref={(g) => {
-              carRefs.current.set(`${line.id}:${i}`, g);
-            }}
-          >
-            {i === 0 ? (
-              <Loco />
-            ) : i === line.coachCount + 1 ? (
-              <Loco flip />
-            ) : (
-              <Coach lineId={line.id} carIndex={i} worldRef={worldRef} />
-            )}
-          </group>
-        )),
-      )}
+      {LINES.map((line) => (
+        <group
+          key={line.id}
+          ref={(g) => {
+            lineRefs.current.set(line.id, g);
+          }}
+        >
+          {Array.from({ length: line.coachCount + 2 }).map((_, i) => {
+            const isLoco = i === 0 || i === line.coachCount + 1;
+            const key = `${line.id}:${i}`;
+            return (
+              <group
+                key={key}
+                ref={(g) => {
+                  carRefs.current.set(key, g);
+                }}
+              >
+                <group
+                  ref={(g) => {
+                    detailRefs.current.set(key, g);
+                  }}
+                >
+                  {i === 0 ? (
+                    <Loco />
+                  ) : i === line.coachCount + 1 ? (
+                    <Loco flip />
+                  ) : (
+                    <Coach lineId={line.id} carIndex={i} worldRef={worldRef} />
+                  )}
+                </group>
+                {/* Far impostor: 1 Lambert box, enabled past the simple radius. */}
+                <mesh
+                  ref={(m) => {
+                    simpleRefs.current.set(key, m);
+                  }}
+                  position={[0, 2.2, 0]}
+                  visible={false}
+                >
+                  <boxGeometry args={[CAR_W, 3.6, isLoco ? LOCO_LEN : COACH_LEN]} />
+                  <meshLambertMaterial color={isLoco ? "#a93226" : "#2456a6"} />
+                </mesh>
+              </group>
+            );
+          })}
+        </group>
+      ))}
     </group>
   );
 }

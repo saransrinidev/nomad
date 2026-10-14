@@ -5,7 +5,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { renderMap, type MapSnapshot } from "@/lib/game/map/mapRender";
+import { renderMapDynamic, renderMapStatic, type MapSnapshot } from "@/lib/game/map/mapRender";
 import {
   ensureDistrictsLoaded,
   getMapDivisions,
@@ -67,31 +67,65 @@ export default function Minimap({
 
     const RANGE = ZOOM_LEVELS[zoomIdx] ?? ZOOM_LEVELS[1];
 
-    let raf = 0;
-    // Real-time: redraw every animation frame (no throttle) so the orange
-    // player arrow + live train markers track the sim 1:1.
-    const draw = () => {
-      raf = requestAnimationFrame(draw);
+    // Static cartography lives on an offscreen canvas, repainted only when
+    // the view genuinely changes (zoom/orientation/borders/focus rebase).
+    // Live markers (player arrow + trains) redraw at ~12 Hz on top.
+    const staticCanvas = document.createElement("canvas");
+    staticCanvas.width = SIZE * dpr;
+    staticCanvas.height = SIZE * dpr;
+    const sctx = staticCanvas.getContext("2d");
+    if (!sctx) return;
+    sctx.scale(dpr, dpr);
+
+    let staticKey = "";
+    let sx = Infinity;
+    let sz = Infinity;
+    let syaw = 0;
+
+    const paint = () => {
       const w = worldRef.current;
+      if (!w) return;
+      // BigMap covers the screen while open — skip both layers.
+      if (w.mapOpen) return;
+      const snap = { ...snapshot(w), northUp };
       const div = getMapDivisions();
-      renderMap(
-        ctx,
-        SIZE,
-        RANGE,
-        { ...snapshot(w), northUp },
-        {
-          districtRings: div.rings,
-          districtLabels: div.labels,
-          labelFont: "600 9px sans-serif",
-          railway: getRailwayMapData(),
-          rivers: riverPolylines(),
-          highlightRings: getThanjavurRings(),
-          highlightLabel: getThanjavurLabel(),
-        },
-      );
+      const railway = getRailwayMapData();
+      const key = `${RANGE}|${northUp}|${div.exact}`;
+      const movedX = snap.focusX - sx;
+      const movedZ = snap.focusZ - sz;
+      const rebase = RANGE * 0.2;
+      const yawMoved = !northUp && Math.abs(snap.yaw - syaw) > 0.05;
+      if (key !== staticKey || movedX * movedX + movedZ * movedZ > rebase * rebase || yawMoved) {
+        staticKey = key;
+        sx = snap.focusX;
+        sz = snap.focusZ;
+        syaw = snap.yaw;
+        renderMapStatic(
+          sctx,
+          SIZE,
+          RANGE,
+          // Bake the static layer at the rebased center so later focus
+          // drift stays covered until the next rebase.
+          { ...snap, focusX: sx, focusZ: sz },
+          {
+            districtRings: div.rings,
+            districtLabels: div.labels,
+            labelFont: "600 9px sans-serif",
+            railway,
+            rivers: riverPolylines(),
+            highlightRings: getThanjavurRings(),
+            highlightLabel: getThanjavurLabel(),
+          },
+        );
+      }
+      // Blit static, then live markers at the true focus.
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      ctx.drawImage(staticCanvas, 0, 0, SIZE, SIZE);
+      renderMapDynamic(ctx, SIZE, RANGE, { ...snap, focusX: sx, focusZ: sz }, { railway });
     };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    paint();
+    const id = window.setInterval(paint, 83); // ~12 Hz
+    return () => window.clearInterval(id);
   }, [worldRef, northUp, zoomIdx]);
 
   return (

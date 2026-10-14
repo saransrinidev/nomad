@@ -7,7 +7,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { headingAngle, renderMap } from "@/lib/game/map/mapRender";
+import { headingAngle, renderMapDynamic, renderMapStatic } from "@/lib/game/map/mapRender";
 import {
   districtsReady,
   ensureDistrictsLoaded,
@@ -76,11 +76,23 @@ export default function BigMap({
     canvas.height = SIZE * dpr;
     ctx.scale(dpr, dpr);
 
-    let raf = 0;
-    // Real-time: redraw every animation frame so trains + orange player
-    // arrow stay live even while the fullscreen map is open.
-    const draw = () => {
-      raf = requestAnimationFrame(draw);
+    // Static cartography on an offscreen canvas (repainted on pan/zoom/
+    // orientation/border changes); live markers at ~15 Hz on top.
+    const staticCanvas = document.createElement("canvas");
+    staticCanvas.width = SIZE * dpr;
+    staticCanvas.height = SIZE * dpr;
+    const sctx = staticCanvas.getContext("2d");
+    if (!sctx) {
+      return () => window.clearInterval(id);
+    }
+    sctx.scale(dpr, dpr);
+
+    let staticKey = "";
+    let sx = Infinity;
+    let sz = Infinity;
+    let syaw = 0;
+
+    const paint = () => {
       const w = worldRef.current;
       const riding = w.mode === "ride";
       const focus = riding ? w.bikePos : w.playerPos;
@@ -93,32 +105,58 @@ export default function BigMap({
       const cz = centerRef.current.z;
       const r = rangeRef.current;
       const div = getMapDivisions();
-      renderMap(
-        ctx,
-        SIZE,
-        r,
-        {
-          focusX: cx,
-          focusZ: cz,
-          px: focus.x,
-          pz: focus.z,
-          yaw,
-          riding,
-          bikeX: w.bikePos.x,
-          bikeZ: w.bikePos.z,
-          northUp: northUpRef.current,
-        },
-        {
-          grid: true,
-          districtRings: div.rings,
-          districtLabels: div.labels,
-          labelFont: "600 11px sans-serif",
-          railway: getRailwayMapData(),
-          rivers: riverPolylines(),
-          highlightRings: getThanjavurRings(),
-          highlightLabel: getThanjavurLabel(),
-        },
-      );
+      const railway = getRailwayMapData();
+      const key = `${r}|${northUpRef.current}|${div.exact}`;
+      const movedX = cx - sx;
+      const movedZ = cz - sz;
+      const rebase = r * 0.15;
+      const yawMoved = !northUpRef.current && Math.abs(yaw - syaw) > 0.05;
+      if (key !== staticKey || movedX * movedX + movedZ * movedZ > rebase * rebase || yawMoved) {
+        staticKey = key;
+        sx = cx;
+        sz = cz;
+        syaw = yaw;
+        renderMapStatic(
+          sctx,
+          SIZE,
+          r,
+          {
+            focusX: sx,
+            focusZ: sz,
+            px: focus.x,
+            pz: focus.z,
+            yaw,
+            riding,
+            bikeX: w.bikePos.x,
+            bikeZ: w.bikePos.z,
+            northUp: northUpRef.current,
+          },
+          {
+            grid: true,
+            districtRings: div.rings,
+            districtLabels: div.labels,
+            labelFont: "600 11px sans-serif",
+            railway,
+            rivers: riverPolylines(),
+            highlightRings: getThanjavurRings(),
+            highlightLabel: getThanjavurLabel(),
+          },
+        );
+      }
+      const snap = {
+        focusX: sx,
+        focusZ: sz,
+        px: focus.x,
+        pz: focus.z,
+        yaw,
+        riding,
+        bikeX: w.bikePos.x,
+        bikeZ: w.bikePos.z,
+        northUp: northUpRef.current,
+      };
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      ctx.drawImage(staticCanvas, 0, 0, SIZE, SIZE);
+      renderMapDynamic(ctx, SIZE, r, snap, { railway });
       // Corner coordinates of the current view.
       ctx.fillStyle = "rgba(95,99,104,0.9)";
       ctx.font = "600 10px monospace";
@@ -127,9 +165,10 @@ export default function BigMap({
       ctx.textAlign = "right";
       ctx.fillText(cornerLabel(cx + r, cz + r), SIZE - 10, SIZE - 10);
     };
-    raf = requestAnimationFrame(draw);
+    paint();
+    const mapId = window.setInterval(paint, 66); // ~15 Hz
     return () => {
-      cancelAnimationFrame(raf);
+      window.clearInterval(mapId);
       window.clearInterval(id);
     };
   }, [worldRef]);

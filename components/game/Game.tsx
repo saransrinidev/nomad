@@ -8,6 +8,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import Player from "./actors/Player";
 import Motorcycle from "./vehicles/bike/Motorcycle";
 import ThirdPersonCamera from "./cameras/ThirdPersonCamera";
@@ -50,6 +51,7 @@ import { latLonToGame } from "@/lib/game/map/tamilnadu";
 import { buildTerrainAsync, groundHeight } from "@/lib/game/map/terrain";
 import {
   getQuality,
+  qualityCameraFar,
   sampleQuality,
   setQualityMode,
   subscribeQuality,
@@ -128,6 +130,22 @@ function GameRig({
     }
   });
 
+  return null;
+}
+
+/**
+ * Keeps camera.far matched to fog/quality (was a fixed 9000 — the whole
+ * 16 km map rasterized every frame). Chunks past far are frustum-culled
+ * for free. Updates only when the quality level changes.
+ */
+function CameraFarSync() {
+  useFrame(({ camera }) => {
+    const want = qualityCameraFar();
+    if (camera instanceof THREE.PerspectiveCamera && Math.abs(camera.far - want) > 1) {
+      camera.far = want;
+      camera.updateProjectionMatrix();
+    }
+  });
   return null;
 }
 
@@ -582,6 +600,7 @@ export default function Game() {
           <Player worldRef={worldRef} />
           <ThirdPersonCamera worldRef={worldRef} onLockChange={handleLockChange} />
           <WaterOverlay />
+          <CameraFarSync />
           <GameRig
             worldRef={worldRef}
             onNearBike={handleNearBike}
